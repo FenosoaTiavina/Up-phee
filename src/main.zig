@@ -1,16 +1,27 @@
 const std = @import("std");
+
+const za = @import("zalgebra");
+
 const sdl = @cImport({
     @cInclude("SDL3/SDL.h");
     @cInclude("SDL3/SDL_gpu.h");
     @cInclude("SDL3/SDL_pixels.h");
     @cInclude("SDL3/SDL_video.h");
 });
-
-const za = @import("zalgebra");
+/// END : IMPORTS -------------------------------------------------------------------------------------------------------------
 const Vec3 = za.Vec3;
-const Vec4_u8 = za.GenericVector(4, u8);
 const Mat4 = za.Mat4;
+const Vec4_u8 = za.GenericVector(4, u8);
 
+const Vertex = struct {
+    position: za.Vec3,
+    color: Vec4_u8,
+};
+
+const UniformBufferObejct = struct {
+    mvp: Mat4,
+};
+/// END: Types -------------------------------------------------------------------------------------------------------------
 const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
 
@@ -115,11 +126,6 @@ fn loadShader(
     return shader;
 }
 
-const PositionColorVertex = struct {
-    position: za.Vec3,
-    color: Vec4_u8,
-};
-
 pub fn main() !u8 {
     if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO)) {
         std.log.err("ERROR: SDL_Init failed: {s}\n", .{sdl.SDL_GetError()});
@@ -149,7 +155,7 @@ pub fn main() !u8 {
     defer sdl.SDL_ReleaseWindowFromGPUDevice(device, window);
 
     // Load shaders + create fill/line pipeline
-    const shader_vert = loadShader(device, "shaders/compiled/PositionColor.vert.spv", sdl.SDL_GPU_SHADERSTAGE_VERTEX, 0, 0, 0, 0);
+    const shader_vert = loadShader(device, "shaders/compiled/PositionColor.vert.spv", sdl.SDL_GPU_SHADERSTAGE_VERTEX, 0, 1, 0, 0);
     if (shader_vert == null) {
         std.log.err("ERROR: load_shader failed\n", .{});
         return 1;
@@ -162,10 +168,84 @@ pub fn main() !u8 {
         return 1;
     }
     defer sdl.SDL_ReleaseGPUShader(device, shader_frag);
+    const buffer_create_info = sdl.SDL_GPUBufferCreateInfo{
+        .usage = sdl.SDL_GPU_BUFFERUSAGE_VERTEX,
+        .size = @sizeOf(Vertex) * 6,
+    };
+    const vertex_buffer = sdl.SDL_CreateGPUBuffer(device, &buffer_create_info);
+    defer sdl.SDL_ReleaseGPUBuffer(device, vertex_buffer);
+
+    var vertices = [_]Vertex{
+        .{
+            .position = za.Vec3.new(-0.5, 0.5, 0),
+            .color = Vec4_u8.new(255, 126, 0, 255),
+        },
+        .{
+            .position = za.Vec3.new(0.5, -0.5, 0),
+            .color = Vec4_u8.new(0, 255, 126, 255),
+        },
+        .{
+            .position = za.Vec3.new(0.5, 0.5, 0),
+            .color = Vec4_u8.new(0, 126, 255, 255),
+        },
+
+        .{
+            .position = za.Vec3.new(0.5, -0.5, 0),
+            .color = Vec4_u8.new(126, 255, 0, 255),
+        },
+        .{
+            .position = za.Vec3.new(-0.5, 0.5, 0),
+            .color = Vec4_u8.new(255, 126, 0, 255),
+        },
+        .{
+            .position = za.Vec3.new(-0.5, -0.5, 0),
+            .color = Vec4_u8.new(126, 0, 255, 255),
+        },
+    };
+
+    const transfer_buffer_create_info = sdl.SDL_GPUTransferBufferCreateInfo{
+        .usage = sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = @sizeOf(Vertex) * vertices.len,
+    };
+    const transfer_buffer = sdl.SDL_CreateGPUTransferBuffer(device, &transfer_buffer_create_info);
+    defer sdl.SDL_ReleaseGPUTransferBuffer(device, transfer_buffer);
+
+    // Map the buffer memory
+    const transfer_data = sdl.SDL_MapGPUTransferBuffer(device, transfer_buffer, false) orelse {
+        std.log.err("SDL_MapGPUTransferBuffer Failed (upload_cmdbuf)", .{});
+        return 1;
+    };
+
+    // Cast the pointer to the correct type and copy the data
+    const typed_ptr = @as([*]Vertex, @alignCast(@ptrCast(transfer_data)));
+    @memcpy(typed_ptr[0..vertices.len], &vertices);
+
+    sdl.SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
+
+    const upload_cmdbuf = sdl.SDL_AcquireGPUCommandBuffer(device);
+    const copy_pass = sdl.SDL_BeginGPUCopyPass(upload_cmdbuf);
+
+    const transfer_buffer_location = sdl.SDL_GPUTransferBufferLocation{
+        .transfer_buffer = transfer_buffer,
+        .offset = 0,
+    };
+    const buffer_region = sdl.SDL_GPUBufferRegion{
+        .buffer = vertex_buffer,
+        .offset = 0,
+        .size = @sizeOf(Vertex) * 6,
+    };
+
+    sdl.SDL_UploadToGPUBuffer(copy_pass, &transfer_buffer_location, &buffer_region, false);
+
+    sdl.SDL_EndGPUCopyPass(copy_pass);
+    if (sdl.SDL_SubmitGPUCommandBuffer(upload_cmdbuf) == false) {
+        std.log.err("SDL_SubmitGPUCommandBuffer Failed (upload_cmdbuf)", .{});
+        return 1;
+    }
 
     const vertex_buffer_desc = sdl.SDL_GPUVertexBufferDescription{
         .slot = 0,
-        .pitch = @sizeOf(PositionColorVertex),
+        .pitch = @sizeOf(Vertex),
         .input_rate = sdl.SDL_GPU_VERTEXINPUTRATE_VERTEX,
         .instance_step_rate = 0,
     };
@@ -205,88 +285,34 @@ pub fn main() !u8 {
         .primitive_type = sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .rasterizer_state = .{
             .fill_mode = sdl.SDL_GPU_FILLMODE_FILL,
-            .cull_mode = sdl.SDL_GPU_CULLMODE_BACK,
         },
     };
 
-    const pipeline = sdl.SDL_CreateGPUGraphicsPipeline(device, &pipeline_info);
-    if (pipeline == null) {
+    const pipeline = sdl.SDL_CreateGPUGraphicsPipeline(device, &pipeline_info) orelse {
         std.log.err("ERROR: SDL_CreateGPUGraphicsPipeline failed: {s}\n", .{sdl.SDL_GetError()});
         return 1;
-    }
+    };
+
     defer sdl.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
-
-    const buffer_create_info = sdl.SDL_GPUBufferCreateInfo{
-        .usage = sdl.SDL_GPU_BUFFERUSAGE_VERTEX,
-        .size = @sizeOf(PositionColorVertex) * 6,
-    };
-    const vertex_buffer = sdl.SDL_CreateGPUBuffer(device, &buffer_create_info);
-    defer sdl.SDL_ReleaseGPUBuffer(device, vertex_buffer);
-
-    const transfer_buffer_create_info = sdl.SDL_GPUTransferBufferCreateInfo{
-        .usage = sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = @sizeOf(PositionColorVertex) * 6,
-    };
-    const transfer_buffer = sdl.SDL_CreateGPUTransferBuffer(device, &transfer_buffer_create_info);
-    defer sdl.SDL_ReleaseGPUTransferBuffer(device, transfer_buffer);
-
-    const transfer_data: [*]PositionColorVertex = @ptrCast(@alignCast(sdl.SDL_MapGPUTransferBuffer(device, transfer_buffer, false)));
-
-    // x, y, z, r, g, b, a
-    transfer_data[0] = .{
-        .position = za.Vec3.new(-0.5, 0.5, 0),
-        .color = Vec4_u8.new(255, 126, 0, 255),
-    };
-    transfer_data[1] = .{
-        .position = za.Vec3.new(0.5, -0.5, 0),
-        .color = Vec4_u8.new(0, 255, 126, 255),
-    };
-    transfer_data[2] = .{
-        .position = za.Vec3.new(0.5, 0.5, 0),
-        .color = Vec4_u8.new(0, 126, 255, 255),
-    };
-
-    transfer_data[3] = .{
-        .position = za.Vec3.new(0.5, -0.5, 0),
-        .color = Vec4_u8.new(126, 255, 0, 255),
-    };
-    transfer_data[4] = .{
-        .position = za.Vec3.new(-0.5, 0.5, 0),
-        .color = Vec4_u8.new(255, 126, 0, 255),
-    };
-    transfer_data[5] = .{
-        .position = za.Vec3.new(-0.5, -0.5, 0),
-        .color = Vec4_u8.new(126, 0, 255, 255),
-    };
-
-    sdl.SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
-
-    const upload_cmdbuf = sdl.SDL_AcquireGPUCommandBuffer(device);
-    const copy_pass = sdl.SDL_BeginGPUCopyPass(upload_cmdbuf);
-
-    const transfer_buffer_location = sdl.SDL_GPUTransferBufferLocation{
-        .transfer_buffer = transfer_buffer,
-        .offset = 0,
-    };
-    const buffer_region = sdl.SDL_GPUBufferRegion{
-        .buffer = vertex_buffer,
-        .offset = 0,
-        .size = @sizeOf(PositionColorVertex) * 6,
-    };
-
-    sdl.SDL_UploadToGPUBuffer(copy_pass, &transfer_buffer_location, &buffer_region, false);
-
-    sdl.SDL_EndGPUCopyPass(copy_pass);
-    if (sdl.SDL_SubmitGPUCommandBuffer(upload_cmdbuf) == false) {
-        std.log.err("SDL_SubmitGPUCommandBuffer Failed (upload_cmdbuf)", .{});
-        return 1;
-    }
 
     _ = sdl.SDL_SetWindowPosition(window, sdl.SDL_WINDOWPOS_CENTERED, sdl.SDL_WINDOWPOS_CENTERED);
 
+    var w: c_int = @intCast(WINDOW_WIDTH);
+    var h: c_int = @intCast(WINDOW_HEIGHT);
+    _ = sdl.SDL_GetWindowSize(window, &w, &h);
+    const aspect: f32 = @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(w));
+
+    const ROTATION_SPEED = 90.0;
+    var rotation: f32 = 0.0;
+
+    const projetction_mat: Mat4 = za.perspective(70.0, aspect, (1 / 1000), 100000);
     var quit = false;
 
+    var last_ticks = sdl.SDL_GetTicks();
     while (!quit) {
+        const new_ticks = sdl.SDL_GetTicks();
+        const delta_time = @as(f32, @floatFromInt(new_ticks - last_ticks)) / 1000;
+        last_ticks = new_ticks;
         var event: sdl.SDL_Event = undefined;
         while (sdl.SDL_PollEvent(&event)) {
             handleEvent(event, &quit);
@@ -331,7 +357,18 @@ pub fn main() !u8 {
         };
 
         sdl.SDL_BindGPUVertexBuffers(render_pass, 0, &buffer_binding, 1);
-        sdl.SDL_DrawGPUPrimitives(render_pass, @sizeOf(PositionColorVertex), 6, 0, 0);
+
+        rotation += ROTATION_SPEED * delta_time;
+        const model_matrix = Mat4.mul(
+            Mat4.fromTranslate(Vec3.new(0, 0, -5)),
+            Mat4.fromRotation(rotation, Vec3.new(1, 0, 0)),
+        );
+
+        const ubo: UniformBufferObejct = .{
+            .mvp = Mat4.mul(projetction_mat, model_matrix),
+        };
+        sdl.SDL_PushGPUVertexUniformData(cmdbuf, 0, &ubo, @sizeOf(UniformBufferObejct));
+        sdl.SDL_DrawGPUPrimitives(render_pass, @sizeOf(Vertex), 6, 0, 0);
         sdl.SDL_EndGPURenderPass(render_pass);
 
         _ = sdl.SDL_SubmitGPUCommandBuffer(cmdbuf);
