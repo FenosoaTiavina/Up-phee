@@ -1,6 +1,9 @@
 const std = @import("std");
 
 const za = @import("zalgebra");
+/// END : IMPORTS -------------------------------------------------------------------------------------------------------------
+const Vec3 = za.Vec3;
+const Mat4 = za.Mat4;
 
 const sdl = @cImport({
     @cInclude("SDL3/SDL.h");
@@ -8,9 +11,6 @@ const sdl = @cImport({
     @cInclude("SDL3/SDL_pixels.h");
     @cInclude("SDL3/SDL_video.h");
 });
-/// END : IMPORTS -------------------------------------------------------------------------------------------------------------
-const Vec3 = za.Vec3;
-const Mat4 = za.Mat4;
 const Vec4_u8 = za.GenericVector(4, u8);
 
 const Vertex = struct {
@@ -126,6 +126,60 @@ fn loadShader(
     return shader;
 }
 
+fn createBuffer(device: *sdl.SDL_GPUDevice, usage: sdl.SDL_GPUBufferUsageFlags, size: u32) ?*sdl.SDL_GPUBuffer {
+    const buffer_create_info = sdl.SDL_GPUBufferCreateInfo{
+        .usage = usage,
+        .size = size,
+    };
+    return sdl.SDL_CreateGPUBuffer(device, &buffer_create_info);
+}
+
+fn uploadToBuffer(device: *sdl.SDL_GPUDevice, buffer: *sdl.SDL_GPUBuffer, comptime T: type, data: []const T) !void {
+    const total_size: u32 = @intCast(@sizeOf(T) * data.len);
+
+    const transfer_buffer_create_info = sdl.SDL_GPUTransferBufferCreateInfo{
+        .usage = sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = total_size,
+    };
+
+    const transfer_buffer = sdl.SDL_CreateGPUTransferBuffer(device, &transfer_buffer_create_info);
+    defer sdl.SDL_ReleaseGPUTransferBuffer(device, transfer_buffer);
+
+    // Map the buffer memory
+    const transfer_data = sdl.SDL_MapGPUTransferBuffer(device, transfer_buffer, false) orelse {
+        std.log.err("SDL_MapGPUTransferBuffer Failed (upload_cmdbuf)", .{});
+        return error.MapFailed;
+    };
+
+    // Cast the pointer to the correct type and copy the data
+    const typed_ptr = @as([*]T, @alignCast(@ptrCast(transfer_data)));
+    @memcpy(typed_ptr[0..data.len], data);
+
+    sdl.SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
+
+    const upload_cmdbuf = sdl.SDL_AcquireGPUCommandBuffer(device);
+    const copy_pass = sdl.SDL_BeginGPUCopyPass(upload_cmdbuf);
+
+    const transfer_buffer_location = sdl.SDL_GPUTransferBufferLocation{
+        .transfer_buffer = transfer_buffer,
+        .offset = 0,
+    };
+
+    const buffer_region = sdl.SDL_GPUBufferRegion{
+        .buffer = buffer,
+        .offset = 0,
+        .size = total_size,
+    };
+
+    sdl.SDL_UploadToGPUBuffer(copy_pass, &transfer_buffer_location, &buffer_region, false);
+    sdl.SDL_EndGPUCopyPass(copy_pass);
+
+    if (sdl.SDL_SubmitGPUCommandBuffer(upload_cmdbuf) == false) {
+        std.log.err("SDL_SubmitGPUCommandBuffer Failed (upload_cmdbuf)", .{});
+        return error.SubmitFailed;
+    }
+}
+
 pub fn main() !u8 {
     if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO)) {
         std.log.err("ERROR: SDL_Init failed: {s}\n", .{sdl.SDL_GetError()});
@@ -168,80 +222,47 @@ pub fn main() !u8 {
         return 1;
     }
     defer sdl.SDL_ReleaseGPUShader(device, shader_frag);
-    const buffer_create_info = sdl.SDL_GPUBufferCreateInfo{
-        .usage = sdl.SDL_GPU_BUFFERUSAGE_VERTEX,
-        .size = @sizeOf(Vertex) * 6,
-    };
-    const vertex_buffer = sdl.SDL_CreateGPUBuffer(device, &buffer_create_info);
-    defer sdl.SDL_ReleaseGPUBuffer(device, vertex_buffer);
 
-    var vertices = [_]Vertex{
-        .{
+    const vertices = [_]Vertex{
+        .{ // tl
             .position = za.Vec3.new(-0.5, 0.5, 0),
             .color = Vec4_u8.new(255, 126, 0, 255),
         },
-        .{
-            .position = za.Vec3.new(0.5, -0.5, 0),
-            .color = Vec4_u8.new(0, 255, 126, 255),
-        },
-        .{
+        .{ // tr
             .position = za.Vec3.new(0.5, 0.5, 0),
             .color = Vec4_u8.new(0, 126, 255, 255),
         },
-
-        .{
+        .{ // br
             .position = za.Vec3.new(0.5, -0.5, 0),
-            .color = Vec4_u8.new(126, 255, 0, 255),
+            .color = Vec4_u8.new(0, 255, 126, 255),
         },
-        .{
-            .position = za.Vec3.new(-0.5, 0.5, 0),
-            .color = Vec4_u8.new(255, 126, 0, 255),
-        },
-        .{
+        .{ //bl
             .position = za.Vec3.new(-0.5, -0.5, 0),
             .color = Vec4_u8.new(126, 0, 255, 255),
         },
     };
 
-    const transfer_buffer_create_info = sdl.SDL_GPUTransferBufferCreateInfo{
-        .usage = sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = @sizeOf(Vertex) * vertices.len,
-    };
-    const transfer_buffer = sdl.SDL_CreateGPUTransferBuffer(device, &transfer_buffer_create_info);
-    defer sdl.SDL_ReleaseGPUTransferBuffer(device, transfer_buffer);
+    const indices = [_]u16{ 0, 1, 2, 2, 3, 0 };
 
-    // Map the buffer memory
-    const transfer_data = sdl.SDL_MapGPUTransferBuffer(device, transfer_buffer, false) orelse {
-        std.log.err("SDL_MapGPUTransferBuffer Failed (upload_cmdbuf)", .{});
+    const vertex_buffer: *sdl.SDL_GPUBuffer = createBuffer(device, sdl.SDL_GPU_BUFFERUSAGE_VERTEX, @sizeOf(Vertex) * vertices.len) orelse {
+        std.log.err("Failed to create Vertex buffer\n", .{});
         return 1;
     };
+    defer sdl.SDL_ReleaseGPUBuffer(device, vertex_buffer);
 
-    // Cast the pointer to the correct type and copy the data
-    const typed_ptr = @as([*]Vertex, @alignCast(@ptrCast(transfer_data)));
-    @memcpy(typed_ptr[0..vertices.len], &vertices);
-
-    sdl.SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
-
-    const upload_cmdbuf = sdl.SDL_AcquireGPUCommandBuffer(device);
-    const copy_pass = sdl.SDL_BeginGPUCopyPass(upload_cmdbuf);
-
-    const transfer_buffer_location = sdl.SDL_GPUTransferBufferLocation{
-        .transfer_buffer = transfer_buffer,
-        .offset = 0,
-    };
-    const buffer_region = sdl.SDL_GPUBufferRegion{
-        .buffer = vertex_buffer,
-        .offset = 0,
-        .size = @sizeOf(Vertex) * 6,
-    };
-
-    sdl.SDL_UploadToGPUBuffer(copy_pass, &transfer_buffer_location, &buffer_region, false);
-
-    sdl.SDL_EndGPUCopyPass(copy_pass);
-    if (sdl.SDL_SubmitGPUCommandBuffer(upload_cmdbuf) == false) {
-        std.log.err("SDL_SubmitGPUCommandBuffer Failed (upload_cmdbuf)", .{});
+    const index_buffer = createBuffer(device, sdl.SDL_GPU_BUFFERUSAGE_VERTEX, @sizeOf(u16) * indices.len) orelse {
+        std.log.err("Failed to create Index buffer\n", .{});
         return 1;
-    }
+    };
+    defer sdl.SDL_ReleaseGPUBuffer(device, index_buffer);
+
+    uploadToBuffer(device, vertex_buffer, Vertex, &vertices) catch |err| {
+        std.log.err("Failed to upload vertices: {}", .{err});
+    };
+
+    uploadToBuffer(device, index_buffer, u16, &indices) catch |err| {
+        std.log.err("Failed to upload indices: {}", .{err});
+    };
 
     const vertex_buffer_desc = sdl.SDL_GPUVertexBufferDescription{
         .slot = 0,
@@ -351,24 +372,24 @@ pub fn main() !u8 {
         const render_pass = sdl.SDL_BeginGPURenderPass(cmdbuf, &color_target_info, 1, null);
         sdl.SDL_BindGPUGraphicsPipeline(render_pass, pipeline);
 
-        const buffer_binding = sdl.SDL_GPUBufferBinding{
+        const vert_buffer_binding = sdl.SDL_GPUBufferBinding{
             .buffer = vertex_buffer,
             .offset = 0,
         };
-
-        sdl.SDL_BindGPUVertexBuffers(render_pass, 0, &buffer_binding, 1);
+        sdl.SDL_BindGPUVertexBuffers(render_pass, 0, &vert_buffer_binding, 1);
+        sdl.SDL_BindGPUIndexBuffer(render_pass, &.{ .buffer = index_buffer, .offset = 0 }, sdl.SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
         rotation += ROTATION_SPEED * delta_time;
         const model_matrix = Mat4.mul(
             Mat4.fromTranslate(Vec3.new(0, 0, -5)),
-            Mat4.fromRotation(rotation, Vec3.new(1, 0, 0)),
+            Mat4.fromRotation(rotation, Vec3.new(1, 1, 1)),
         );
 
         const ubo: UniformBufferObejct = .{
             .mvp = Mat4.mul(projetction_mat, model_matrix),
         };
         sdl.SDL_PushGPUVertexUniformData(cmdbuf, 0, &ubo, @sizeOf(UniformBufferObejct));
-        sdl.SDL_DrawGPUPrimitives(render_pass, @sizeOf(Vertex), 6, 0, 0);
+        sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(indices.len), 1, 0, 0, 0);
         sdl.SDL_EndGPURenderPass(render_pass);
 
         _ = sdl.SDL_SubmitGPUCommandBuffer(cmdbuf);
