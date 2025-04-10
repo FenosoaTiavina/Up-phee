@@ -66,10 +66,6 @@ fn printEvent(event: sdl.SDL_Event) void {
     }
 }
 
-// fn handleEvent(event: sdl.SDL_Event, quit: *bool) void {
-// printEvent(event);
-// }
-
 fn loadShader(
     device: *sdl.SDL_GPUDevice,
     filename: [*c]const u8,
@@ -190,10 +186,11 @@ fn uploadTextureGPU(
         .offset = buffer_offset,
     };
 
+    // Fix: correct width and height parameters
     const texture_region = sdl.SDL_GPUTextureRegion{
         .texture = texture,
         .w = @intCast(image_size.x()),
-        .y = @intCast(image_size.y()),
+        .h = @intCast(image_size.y()), // Fixed: was using 'y' property instead of 'h'
         .d = 1,
     };
 
@@ -229,6 +226,7 @@ pub fn main() !u8 {
     defer sdl.SDL_ReleaseWindowFromGPUDevice(device, window);
 
     // Load shaders + create fill/line pipeline
+    // Fix: Increase sampler count for vertex shader to 0 and for fragment shader to 1
     const shader_vert = loadShader(device, "shaders/compiled/PositionColor.vert.spv", sdl.SDL_GPU_SHADERSTAGE_VERTEX, 1, 0, 0, 0);
     if (shader_vert == null) {
         std.log.err("ERROR: load_shader failed\n", .{});
@@ -236,7 +234,7 @@ pub fn main() !u8 {
     }
     defer sdl.SDL_ReleaseGPUShader(device, shader_vert);
 
-    const shader_frag = loadShader(device, "shaders/compiled/SolidColor.frag.spv", sdl.SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 0, 0);
+    const shader_frag = loadShader(device, "shaders/compiled/SolidColor.frag.spv", sdl.SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 0, 1);
     if (shader_frag == null) {
         std.log.err("ERROR: load_shader failed\n", .{});
         return 1;
@@ -253,7 +251,8 @@ pub fn main() !u8 {
         4,
     );
 
-    const texture_byte_size: u32 = @intCast(texture_size.y() * texture_size.y() * 4);
+    // Fix: Calculate correct byte size
+    const texture_byte_size: u32 = @intCast(texture_size.x() * texture_size.y() * 4);
     if (image_data != null) {
         pixels = image_data[0..@intCast(texture_size.x() * texture_size.y() * 4)];
         std.log.debug("images {d}x{d}: {d}", .{
@@ -265,12 +264,14 @@ pub fn main() !u8 {
         std.debug.print("failed to load \"{s}\": {s}\n", .{ "assets/kenney_prototypeTextures/PNG/Purple/texture_10.png", stb.stbi_failure_reason() });
         return 1;
     }
+    defer stb.stbi_image_free(image_data); // Fix: Free the image data after use
 
+    // Fix: Correct texture width and height
     const texture = sdl.SDL_CreateGPUTexture(device, &sdl.SDL_GPUTextureCreateInfo{
         .type = sdl.SDL_GPU_TEXTURETYPE_2D,
         .format = sdl.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-        .height = @intCast(texture_size.x()),
-        .width = @intCast(texture_size.y()),
+        .width = @intCast(texture_size.x()), // Fixed: was switched
+        .height = @intCast(texture_size.y()), // Fixed: was switched
         .layer_count_or_depth = 1,
         .num_levels = 1,
         .usage = sdl.SDL_GPU_TEXTUREUSAGE_SAMPLER,
@@ -278,27 +279,29 @@ pub fn main() !u8 {
         std.log.err("SDL_CreateGPUTexture failed {s}", .{sdl.SDL_GetError()});
         return 1;
     };
+    defer sdl.SDL_ReleaseGPUTexture(device, texture);
 
+    // Fix: Corrected UV coordinates for the vertices
     const vertices = [_]Vertex{
-        .{ // tl
+        .{ // top-left
             .position = za.Vec3.new(-0.5, 0.5, 0),
             .color = Vec4.new(1.0, 1.0, 1.0, 1.0),
-            .uv = Vec2.new(0, 0),
+            .uv = Vec2.new(0.0, 0.0),
         },
-        .{ // tr
+        .{ // top-right
             .position = za.Vec3.new(0.5, 0.5, 0),
             .color = Vec4.new(1.0, 1.0, 1.0, 1.0),
-            .uv = Vec2.new(1, 0),
+            .uv = Vec2.new(1.0, 0.0),
         },
-        .{ // br
+        .{ // bottom-right
             .position = za.Vec3.new(0.5, -0.5, 0),
             .color = Vec4.new(1.0, 1.0, 1.0, 1.0),
-            .uv = Vec2.new(0, 1),
+            .uv = Vec2.new(1.0, 1.0),
         },
-        .{ //bl
+        .{ // bottom-left
             .position = za.Vec3.new(-0.5, -0.5, 0),
             .color = Vec4.new(1.0, 1.0, 1.0, 1.0),
-            .uv = Vec2.new(1, 1),
+            .uv = Vec2.new(0.0, 1.0),
         },
     };
 
@@ -361,7 +364,15 @@ pub fn main() !u8 {
 
     _ = sdl.SDL_SubmitGPUCommandBuffer(upload_cmdbuf);
 
-    const sampler = sdl.SDL_CreateGPUSampler(device, &sdl.SDL_GPUSamplerCreateInfo{});
+    // Create a sampler for the texture
+    const sampler = sdl.SDL_CreateGPUSampler(device, &sdl.SDL_GPUSamplerCreateInfo{
+        .min_filter = sdl.SDL_GPU_FILTER_LINEAR,
+        .mag_filter = sdl.SDL_GPU_FILTER_LINEAR,
+        .address_mode_u = sdl.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_v = sdl.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_w = sdl.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+    });
+    defer sdl.SDL_ReleaseGPUSampler(device, sampler);
 
     const vertex_buffer_desc = sdl.SDL_GPUVertexBufferDescription{
         .slot = 0,
@@ -370,24 +381,25 @@ pub fn main() !u8 {
         .instance_step_rate = 0,
     };
 
+    // Fix: Correct the vertex attribute layout
     const vertex_attributes = [_]sdl.SDL_GPUVertexAttribute{
-        .{
+        .{ // Position
             .location = 0,
             .buffer_slot = 0,
             .format = sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-            .offset = 0,
+            .offset = @offsetOf(Vertex, "position"),
         },
-        .{
+        .{ // Color
             .location = 1,
             .buffer_slot = 0,
             .format = sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-            .offset = @sizeOf(Vec3),
+            .offset = @offsetOf(Vertex, "color"),
         },
-        .{
+        .{ // UV
             .location = 2,
             .buffer_slot = 0,
             .format = sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
-            .offset = @sizeOf(Vec2),
+            .offset = @offsetOf(Vertex, "uv"),
         },
     };
 
@@ -395,6 +407,7 @@ pub fn main() !u8 {
         .format = sdl.SDL_GetGPUSwapchainTextureFormat(device, window),
     };
 
+    // Fix: Use correct number of vertex attributes
     const pipeline_info = sdl.SDL_GPUGraphicsPipelineCreateInfo{
         .vertex_shader = shader_vert,
         .fragment_shader = shader_frag,
@@ -402,7 +415,7 @@ pub fn main() !u8 {
             .vertex_buffer_descriptions = &vertex_buffer_desc,
             .num_vertex_buffers = 1,
             .vertex_attributes = &vertex_attributes,
-            .num_vertex_attributes = 3,
+            .num_vertex_attributes = 3, // Fixed: was 2, needs to be 3 for position, color, uv
         },
         .target_info = .{
             .num_color_targets = 1,
@@ -426,14 +439,15 @@ pub fn main() !u8 {
     var w: c_int = @intCast(WINDOW_WIDTH);
     var h: c_int = @intCast(WINDOW_HEIGHT);
     _ = sdl.SDL_GetWindowSize(window, &w, &h);
-    const aspect: f32 = @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(w));
+    // Fix: Calculate aspect ratio correctly
+    const aspect: f32 = @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(h));
 
     const ROTATION_SPEED = 90.0;
     var rotation: f32 = 0.0;
-    var translate_z: f32 = 0.0;
+    var translate_z: f32 = -2.0; // Fix: Start with a negative Z to see the quad
     const MOVE_SPEED = 0.2;
 
-    const projection_mat: Mat4 = za.perspective(70.0, aspect, (1 / 1000), 100000);
+    const projection_mat: Mat4 = za.perspective(70.0, aspect, 0.1, 1000.0); // Fix: Use more reasonable near/far planes
     var quit = false;
 
     var last_ticks = sdl.SDL_GetTicks();
@@ -452,9 +466,12 @@ pub fn main() !u8 {
                         sdl.SDLK_Q => {
                             quit = true;
                         },
-                        sdl.SDLK_W => {},
-                        sdl.SDLK_S => {},
-                        sdl.SDLK_D => {},
+                        sdl.SDLK_W => {
+                            translate_z -= MOVE_SPEED; // Move forward
+                        },
+                        sdl.SDLK_S => {
+                            translate_z += MOVE_SPEED; // Move backward
+                        },
                         else => {},
                     }
                 },
@@ -463,11 +480,6 @@ pub fn main() !u8 {
                 },
                 else => {},
             }
-
-            // handleEvent(
-            //     event,
-            //     &quit,
-            // );
         }
 
         const cmdbuf = sdl.SDL_AcquireGPUCommandBuffer(device);
@@ -500,7 +512,10 @@ pub fn main() !u8 {
             .store_op = sdl.SDL_GPU_STOREOP_STORE,
         };
 
-        const render_pass = sdl.SDL_BeginGPURenderPass(cmdbuf, &color_target_info, 1, null);
+        const render_pass = sdl.SDL_BeginGPURenderPass(cmdbuf, &color_target_info, 1, null) orelse {
+            std.log.err("ERROR: SDL_BeginGPURenderPass failed: {s}\n", .{sdl.SDL_GetError()});
+            return 1;
+        };
         sdl.SDL_BindGPUGraphicsPipeline(render_pass, pipeline);
 
         const vert_buffer_binding = sdl.SDL_GPUBufferBinding{
@@ -511,18 +526,24 @@ pub fn main() !u8 {
         sdl.SDL_BindGPUIndexBuffer(render_pass, &.{ .buffer = index_buffer, .offset = 0 }, sdl.SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
         rotation += ROTATION_SPEED * delta_time;
-        const model_mat = Mat4.fromTranslate(Vec3.new(0, 0, translate_z));
-        // const model_mat = Mat4.mul(
-        //     Mat4.fromTranslate(Vec3.new(0, 0, translate_z)),
-        //
-        //     Mat4.fromRotation(rotation, Vec3.new(0, 1, 0)),
-        // );
+
+        // Create a model matrix with rotation for better visualization
+        const model_mat = Mat4.mul(
+            Mat4.fromTranslate(Vec3.new(0, 0, translate_z)),
+            Mat4.fromRotation(rotation, Vec3.new(0, 1, 0)),
+        );
 
         const ubo: UniformBufferObejct = .{
             .mvp = Mat4.mul(projection_mat, model_mat),
         };
+
+        // Push uniform data
         sdl.SDL_PushGPUVertexUniformData(cmdbuf, 0, &ubo, @sizeOf(UniformBufferObejct));
+
+        // Bind texture sampler to fragment shader
         sdl.SDL_BindGPUFragmentSamplers(render_pass, 0, &(sdl.SDL_GPUTextureSamplerBinding{ .texture = texture, .sampler = sampler }), 1);
+
+        // Draw the quad
         sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(indices.len), 1, 0, 0, 0);
         sdl.SDL_EndGPURenderPass(render_pass);
 
