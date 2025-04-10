@@ -5,6 +5,10 @@ const za = @import("zalgebra");
 const Vec3 = za.Vec3;
 const Mat4 = za.Mat4;
 
+const stb = @cImport({
+    @cInclude("stb/stb_image.h");
+});
+
 const sdl = @cImport({
     @cInclude("SDL3/SDL.h");
     @cInclude("SDL3/SDL_gpu.h");
@@ -37,8 +41,10 @@ fn printEvent(event: sdl.SDL_Event) void {
             std.log.info("Event: SDL_EVENT_KEY_UP - Key: {s} (code: {d})", .{ key_name, event.key.key });
         },
         sdl.SDL_EVENT_MOUSE_MOTION => std.log.info("Event: SDL_EVENT_MOUSEMOTION - X: {d}, Y: {d}", .{ event.motion.x, event.motion.y }),
+        sdl.SDL_EVENT_MOUSE_WHEEL => std.log.info("Event: SDL_EVENT_MOUSEMOTION - X: {d}, Y: {d}", .{ event.motion.x, event.motion.y }),
         sdl.SDL_EVENT_MOUSE_BUTTON_DOWN => std.log.info("Event: SDL_EVENT_MOUSEBUTTONDOWN - Button: {d}", .{event.button.button}),
         sdl.SDL_EVENT_MOUSE_BUTTON_UP => std.log.info("Event: SDL_EVENT_MOUSEBUTTONUP - Button: {d}", .{event.button.button}),
+
         sdl.SDL_EVENT_WINDOW_SHOWN => std.log.info("Event: Window {s}", .{"SHOWN"}),
         sdl.SDL_EVENT_WINDOW_HIDDEN => std.log.info("Event: Window {s}", .{"HIDDEN"}),
         sdl.SDL_EVENT_WINDOW_EXPOSED => std.log.info("Event: Window {s}", .{"EXPOSED"}),
@@ -57,26 +63,9 @@ fn printEvent(event: sdl.SDL_Event) void {
     }
 }
 
-fn handleEvent(event: sdl.SDL_Event, quit: *bool) void {
-    printEvent(event);
-    switch (event.type) {
-        sdl.SDL_EVENT_QUIT => {
-            quit.* = true;
-        },
-        sdl.SDL_EVENT_KEY_DOWN => {
-            switch (event.key.key) {
-                sdl.SDLK_Q => {
-                    quit.* = true;
-                },
-                sdl.SDLK_W => {},
-                sdl.SDLK_S => {},
-                sdl.SDLK_D => {},
-                else => {},
-            }
-        },
-        else => {},
-    }
-}
+// fn handleEvent(event: sdl.SDL_Event, quit: *bool) void {
+// printEvent(event);
+// }
 
 fn loadShader(
     device: *sdl.SDL_GPUDevice,
@@ -134,7 +123,13 @@ fn createBuffer(device: *sdl.SDL_GPUDevice, usage: sdl.SDL_GPUBufferUsageFlags, 
     return sdl.SDL_CreateGPUBuffer(device, &buffer_create_info);
 }
 
-fn uploadToBuffer(device: *sdl.SDL_GPUDevice, buffer: *sdl.SDL_GPUBuffer, comptime T: type, data: []const T) !void {
+fn uploadToBuffer(
+    device: *sdl.SDL_GPUDevice,
+    copy_pass: *sdl.SDL_GPUCopyPass,
+    comptime T: type,
+    data: []const T,
+    buffer: *sdl.SDL_GPUBuffer,
+) !void {
     const total_size: u32 = @intCast(@sizeOf(T) * data.len);
 
     const transfer_buffer_create_info = sdl.SDL_GPUTransferBufferCreateInfo{
@@ -157,9 +152,6 @@ fn uploadToBuffer(device: *sdl.SDL_GPUDevice, buffer: *sdl.SDL_GPUBuffer, compti
 
     sdl.SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
 
-    const upload_cmdbuf = sdl.SDL_AcquireGPUCommandBuffer(device);
-    const copy_pass = sdl.SDL_BeginGPUCopyPass(upload_cmdbuf);
-
     const transfer_buffer_location = sdl.SDL_GPUTransferBufferLocation{
         .transfer_buffer = transfer_buffer,
         .offset = 0,
@@ -172,12 +164,8 @@ fn uploadToBuffer(device: *sdl.SDL_GPUDevice, buffer: *sdl.SDL_GPUBuffer, compti
     };
 
     sdl.SDL_UploadToGPUBuffer(copy_pass, &transfer_buffer_location, &buffer_region, false);
-    sdl.SDL_EndGPUCopyPass(copy_pass);
 
-    if (sdl.SDL_SubmitGPUCommandBuffer(upload_cmdbuf) == false) {
-        std.log.err("SDL_SubmitGPUCommandBuffer Failed (upload_cmdbuf)", .{});
-        return error.SubmitFailed;
-    }
+    // Note: We don't end the copy pass here anymore
 }
 
 pub fn main() !u8 {
@@ -223,6 +211,41 @@ pub fn main() !u8 {
     }
     defer sdl.SDL_ReleaseGPUShader(device, shader_frag);
 
+    var window_size = za.Vec2_usize.new(0, 0);
+    var pixels: []u8 = undefined;
+    var image_data: [*c]u8 = stb.stbi_load(
+        "assets/kenney_prototypeTextures/PNG/Purple/texture_10.png",
+        @ptrCast(window_size.xMut()),
+        @ptrCast(window_size.yMut()),
+        null,
+        4,
+    );
+
+    if (image_data != null) {
+        pixels = image_data[0..@intCast(window_size.x() * window_size.y() * 4)];
+    } else {
+        std.debug.print("failed to load \"{s}\": {s}\n", .{ "assets/kenney_prototypeTextures/PNG/Purple/texture_10.png", stb.stbi_failure_reason() });
+        return 1;
+    }
+
+    const texture_byte_size: usize = @intCast(window_size.y() * window_size.y() * 4);
+    _ = texture_byte_size; // autofix
+
+    const texture = sdl.SDL_CreateGPUTexture(device, &sdl.SDL_GPUTextureCreateInfo{
+        .type = sdl.SDL_GPU_TEXTURETYPE_2D,
+        .format = sdl.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .height = @intCast(window_size.x()),
+        .width = @intCast(window_size.y()),
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+        .usage = sdl.SDL_GPU_TEXTUREUSAGE_SAMPLER,
+    }) orelse {
+        std.log.err("SDL_CreateGPUTexture failed {s}", .{sdl.SDL_GetError()});
+        return 1;
+    };
+
+    _ = texture; // autofix
+
     const vertices = [_]Vertex{
         .{ // tl
             .position = za.Vec3.new(-0.5, 0.5, 0),
@@ -256,13 +279,27 @@ pub fn main() !u8 {
     };
     defer sdl.SDL_ReleaseGPUBuffer(device, index_buffer);
 
-    uploadToBuffer(device, vertex_buffer, Vertex, &vertices) catch |err| {
-        std.log.err("Failed to upload vertices: {}", .{err});
+    // Create command buffer for uploading
+    const upload_cmdbuf = sdl.SDL_AcquireGPUCommandBuffer(device) orelse {
+        std.log.err("ERROR: SDL_AcquireGPUCommandBuffer failed: {s}\n", .{sdl.SDL_GetError()});
+        return 1;
     };
 
-    uploadToBuffer(device, index_buffer, u16, &indices) catch |err| {
-        std.log.err("Failed to upload indices: {}", .{err});
+    // Begin copy pass for uploading both buffers
+    const copy_pass = sdl.SDL_BeginGPUCopyPass(upload_cmdbuf) orelse {
+        std.log.err("ERROR: SDL_BeginGPUCopyPass failed: {s}\n", .{sdl.SDL_GetError()});
+        return 1;
     };
+
+    // Upload both buffers using the same copy pass
+    try uploadToBuffer(device, copy_pass, Vertex, &vertices, vertex_buffer);
+    try uploadToBuffer(device, copy_pass, u16, &indices, index_buffer);
+
+    // End the copy pass after all uploads
+    sdl.SDL_EndGPUCopyPass(copy_pass);
+
+    // Submit the command buffer
+    _ = sdl.SDL_SubmitGPUCommandBuffer(upload_cmdbuf);
 
     const vertex_buffer_desc = sdl.SDL_GPUVertexBufferDescription{
         .slot = 0,
@@ -325,8 +362,10 @@ pub fn main() !u8 {
 
     const ROTATION_SPEED = 90.0;
     var rotation: f32 = 0.0;
+    var translate_z: f32 = 0.0;
+    const MOVE_SPEED = 0.2;
 
-    const projetction_mat: Mat4 = za.perspective(70.0, aspect, (1 / 1000), 100000);
+    const projection_mat: Mat4 = za.perspective(70.0, aspect, (1 / 1000), 100000);
     var quit = false;
 
     var last_ticks = sdl.SDL_GetTicks();
@@ -336,7 +375,31 @@ pub fn main() !u8 {
         last_ticks = new_ticks;
         var event: sdl.SDL_Event = undefined;
         while (sdl.SDL_PollEvent(&event)) {
-            handleEvent(event, &quit);
+            switch (event.type) {
+                sdl.SDL_EVENT_QUIT => {
+                    quit = true;
+                },
+                sdl.SDL_EVENT_KEY_DOWN => {
+                    switch (event.key.key) {
+                        sdl.SDLK_Q => {
+                            quit = true;
+                        },
+                        sdl.SDLK_W => {},
+                        sdl.SDLK_S => {},
+                        sdl.SDLK_D => {},
+                        else => {},
+                    }
+                },
+                sdl.SDL_EVENT_MOUSE_WHEEL => {
+                    translate_z += (event.wheel.y * MOVE_SPEED);
+                },
+                else => {},
+            }
+
+            // handleEvent(
+            //     event,
+            //     &quit,
+            // );
         }
 
         const cmdbuf = sdl.SDL_AcquireGPUCommandBuffer(device);
@@ -380,13 +443,14 @@ pub fn main() !u8 {
         sdl.SDL_BindGPUIndexBuffer(render_pass, &.{ .buffer = index_buffer, .offset = 0 }, sdl.SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
         rotation += ROTATION_SPEED * delta_time;
-        const model_matrix = Mat4.mul(
-            Mat4.fromTranslate(Vec3.new(0, 0, -5)),
-            Mat4.fromRotation(rotation, Vec3.new(1, 1, 1)),
+        const model_mat = Mat4.mul(
+            Mat4.fromTranslate(Vec3.new(0, 0, translate_z)),
+
+            Mat4.fromRotation(rotation, Vec3.new(0, 1, 0)),
         );
 
         const ubo: UniformBufferObejct = .{
-            .mvp = Mat4.mul(projetction_mat, model_matrix),
+            .mvp = Mat4.mul(projection_mat, model_mat),
         };
         sdl.SDL_PushGPUVertexUniformData(cmdbuf, 0, &ubo, @sizeOf(UniformBufferObejct));
         sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(indices.len), 1, 0, 0, 0);

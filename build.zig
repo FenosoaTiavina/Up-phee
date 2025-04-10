@@ -34,7 +34,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe.root_module.addImport("zalgebra", zalgebra.module("zalgebra"));
-
+    exe.addCSourceFiles(.{
+        .files = &[_][]const u8{"c/stb_image.c"},
+    }); // -g adds debug info, makes it easier to debug
     exe.linkLibrary(sdl_lib);
 
     b.installArtifact(exe);
