@@ -2,7 +2,10 @@ const std = @import("std");
 
 const za = @import("zalgebra");
 /// END : IMPORTS -------------------------------------------------------------------------------------------------------------
+const Vec2 = za.Vec2;
 const Vec3 = za.Vec3;
+const Vec4_u8 = za.GenericVector(4, u8);
+const Vec4 = za.Vec4;
 const Mat4 = za.Mat4;
 
 const stb = @cImport({
@@ -15,11 +18,11 @@ const sdl = @cImport({
     @cInclude("SDL3/SDL_pixels.h");
     @cInclude("SDL3/SDL_video.h");
 });
-const Vec4_u8 = za.GenericVector(4, u8);
 
 const Vertex = struct {
     position: za.Vec3,
-    color: Vec4_u8,
+    color: Vec4,
+    uv: Vec2,
 };
 
 const UniformBufferObejct = struct {
@@ -71,10 +74,10 @@ fn loadShader(
     device: *sdl.SDL_GPUDevice,
     filename: [*c]const u8,
     stage: sdl.SDL_GPUShaderStage,
-    sampler_count: u32,
     uniform_buffer_count: u32,
     storage_buffer_count: u32,
     storage_texture_count: u32,
+    sampler_count: u32,
 ) ?*sdl.SDL_GPUShader {
     if (sdl.SDL_GetPathInfo(filename, null) == false) {
         std.log.err("File ({s}) does not exist.\n", .{filename});
@@ -123,22 +126,16 @@ fn createBuffer(device: *sdl.SDL_GPUDevice, usage: sdl.SDL_GPUBufferUsageFlags, 
     return sdl.SDL_CreateGPUBuffer(device, &buffer_create_info);
 }
 
-fn uploadToBuffer(
+fn uploadToGPU(
     device: *sdl.SDL_GPUDevice,
     copy_pass: *sdl.SDL_GPUCopyPass,
+    transfer_buffer: *sdl.SDL_GPUTransferBuffer,
+    buffer_offset: u32,
     comptime T: type,
     data: []const T,
     buffer: *sdl.SDL_GPUBuffer,
 ) !void {
     const total_size: u32 = @intCast(@sizeOf(T) * data.len);
-
-    const transfer_buffer_create_info = sdl.SDL_GPUTransferBufferCreateInfo{
-        .usage = sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = total_size,
-    };
-
-    const transfer_buffer = sdl.SDL_CreateGPUTransferBuffer(device, &transfer_buffer_create_info);
-    defer sdl.SDL_ReleaseGPUTransferBuffer(device, transfer_buffer);
 
     // Map the buffer memory
     const transfer_data = sdl.SDL_MapGPUTransferBuffer(device, transfer_buffer, false) orelse {
@@ -146,15 +143,15 @@ fn uploadToBuffer(
         return error.MapFailed;
     };
 
-    // Cast the pointer to the correct type and copy the data
-    const typed_ptr = @as([*]T, @alignCast(@ptrCast(transfer_data)));
-    @memcpy(typed_ptr[0..data.len], data);
+    // Cast the pointer to bytes and copy the data at the specified offset
+    const transfer_bytes = @as([*]u8, @ptrCast(transfer_data));
+    @memcpy(transfer_bytes[buffer_offset .. buffer_offset + total_size], @as([*]const u8, @ptrCast(data.ptr)));
 
     sdl.SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
 
     const transfer_buffer_location = sdl.SDL_GPUTransferBufferLocation{
         .transfer_buffer = transfer_buffer,
-        .offset = 0,
+        .offset = buffer_offset,
     };
 
     const buffer_region = sdl.SDL_GPUBufferRegion{
@@ -164,8 +161,43 @@ fn uploadToBuffer(
     };
 
     sdl.SDL_UploadToGPUBuffer(copy_pass, &transfer_buffer_location, &buffer_region, false);
+}
 
-    // Note: We don't end the copy pass here anymore
+fn uploadTextureGPU(
+    device: *sdl.SDL_GPUDevice,
+    copy_pass: *sdl.SDL_GPUCopyPass,
+    transfer_buffer: *sdl.SDL_GPUTransferBuffer,
+    texture: *sdl.SDL_GPUTexture,
+    buffer_offset: u32,
+    comptime T: type,
+    images_data: *[]u8,
+    image_size: za.Vec2_usize,
+    image_byte_size: usize,
+) !void {
+    // Map the buffer memory
+    const transfer_data = sdl.SDL_MapGPUTransferBuffer(device, transfer_buffer, false) orelse {
+        std.log.err("SDL_MapGPUTransferBuffer Failed (upload_cmdbuf)", .{});
+        return error.MapFailed;
+    };
+
+    // Cast the pointer to bytes and copy the data at the specified offset
+    const transfer_bytes: [*]T = @ptrCast(transfer_data);
+    @memcpy(transfer_bytes[buffer_offset .. buffer_offset + image_byte_size], images_data.ptr);
+    sdl.SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
+
+    const texture_transfer_info = sdl.struct_SDL_GPUTextureTransferInfo{
+        .transfer_buffer = transfer_buffer,
+        .offset = buffer_offset,
+    };
+
+    const texture_region = sdl.SDL_GPUTextureRegion{
+        .texture = texture,
+        .w = @intCast(image_size.x()),
+        .y = @intCast(image_size.y()),
+        .d = 1,
+    };
+
+    sdl.SDL_UploadToGPUTexture(copy_pass, &texture_transfer_info, &texture_region, false);
 }
 
 pub fn main() !u8 {
@@ -197,7 +229,7 @@ pub fn main() !u8 {
     defer sdl.SDL_ReleaseWindowFromGPUDevice(device, window);
 
     // Load shaders + create fill/line pipeline
-    const shader_vert = loadShader(device, "shaders/compiled/PositionColor.vert.spv", sdl.SDL_GPU_SHADERSTAGE_VERTEX, 0, 1, 0, 0);
+    const shader_vert = loadShader(device, "shaders/compiled/PositionColor.vert.spv", sdl.SDL_GPU_SHADERSTAGE_VERTEX, 1, 0, 0, 0);
     if (shader_vert == null) {
         std.log.err("ERROR: load_shader failed\n", .{});
         return 1;
@@ -211,31 +243,34 @@ pub fn main() !u8 {
     }
     defer sdl.SDL_ReleaseGPUShader(device, shader_frag);
 
-    var window_size = za.Vec2_usize.new(0, 0);
+    var texture_size = za.Vec2_usize.new(0, 0);
     var pixels: []u8 = undefined;
     var image_data: [*c]u8 = stb.stbi_load(
         "assets/kenney_prototypeTextures/PNG/Purple/texture_10.png",
-        @ptrCast(window_size.xMut()),
-        @ptrCast(window_size.yMut()),
+        @ptrCast(texture_size.xMut()),
+        @ptrCast(texture_size.yMut()),
         null,
         4,
     );
 
+    const texture_byte_size: u32 = @intCast(texture_size.y() * texture_size.y() * 4);
     if (image_data != null) {
-        pixels = image_data[0..@intCast(window_size.x() * window_size.y() * 4)];
+        pixels = image_data[0..@intCast(texture_size.x() * texture_size.y() * 4)];
+        std.log.debug("images {d}x{d}: {d}", .{
+            texture_size.x(),
+            texture_size.y(),
+            texture_byte_size,
+        });
     } else {
         std.debug.print("failed to load \"{s}\": {s}\n", .{ "assets/kenney_prototypeTextures/PNG/Purple/texture_10.png", stb.stbi_failure_reason() });
         return 1;
     }
 
-    const texture_byte_size: usize = @intCast(window_size.y() * window_size.y() * 4);
-    _ = texture_byte_size; // autofix
-
     const texture = sdl.SDL_CreateGPUTexture(device, &sdl.SDL_GPUTextureCreateInfo{
         .type = sdl.SDL_GPU_TEXTURETYPE_2D,
         .format = sdl.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-        .height = @intCast(window_size.x()),
-        .width = @intCast(window_size.y()),
+        .height = @intCast(texture_size.x()),
+        .width = @intCast(texture_size.y()),
         .layer_count_or_depth = 1,
         .num_levels = 1,
         .usage = sdl.SDL_GPU_TEXTUREUSAGE_SAMPLER,
@@ -244,24 +279,26 @@ pub fn main() !u8 {
         return 1;
     };
 
-    _ = texture; // autofix
-
     const vertices = [_]Vertex{
         .{ // tl
             .position = za.Vec3.new(-0.5, 0.5, 0),
-            .color = Vec4_u8.new(255, 126, 0, 255),
+            .color = Vec4.new(1.0, 1.0, 1.0, 1.0),
+            .uv = Vec2.new(0, 0),
         },
         .{ // tr
             .position = za.Vec3.new(0.5, 0.5, 0),
-            .color = Vec4_u8.new(0, 126, 255, 255),
+            .color = Vec4.new(1.0, 1.0, 1.0, 1.0),
+            .uv = Vec2.new(1, 0),
         },
         .{ // br
             .position = za.Vec3.new(0.5, -0.5, 0),
-            .color = Vec4_u8.new(0, 255, 126, 255),
+            .color = Vec4.new(1.0, 1.0, 1.0, 1.0),
+            .uv = Vec2.new(0, 1),
         },
         .{ //bl
             .position = za.Vec3.new(-0.5, -0.5, 0),
-            .color = Vec4_u8.new(126, 0, 255, 255),
+            .color = Vec4.new(1.0, 1.0, 1.0, 1.0),
+            .uv = Vec2.new(1, 1),
         },
     };
 
@@ -279,7 +316,28 @@ pub fn main() !u8 {
     };
     defer sdl.SDL_ReleaseGPUBuffer(device, index_buffer);
 
-    // Create command buffer for uploading
+    const vertices_byte_size = @sizeOf(Vertex) * vertices.len;
+    const indices_byte_size = @sizeOf(u16) * indices.len;
+    const total_byte_size = vertices_byte_size + indices_byte_size;
+
+    const transfer_buffer = sdl.SDL_CreateGPUTransferBuffer(device, &sdl.SDL_GPUTransferBufferCreateInfo{
+        .usage = sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = total_byte_size,
+    }) orelse {
+        std.log.err("ERROR: SDL_CreateGPUTransferBuffer failed: {s}\n", .{sdl.SDL_GetError()});
+        return 1;
+    };
+    defer sdl.SDL_ReleaseGPUTransferBuffer(device, transfer_buffer);
+
+    const texture_transfer_buffer = sdl.SDL_CreateGPUTransferBuffer(device, &sdl.SDL_GPUTransferBufferCreateInfo{
+        .usage = sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = texture_byte_size,
+    }) orelse {
+        std.log.err("ERROR: SDL_CreateGPUTransferBuffer failed: {s}\n", .{sdl.SDL_GetError()});
+        return 1;
+    };
+    defer sdl.SDL_ReleaseGPUTransferBuffer(device, texture_transfer_buffer);
+
     const upload_cmdbuf = sdl.SDL_AcquireGPUCommandBuffer(device) orelse {
         std.log.err("ERROR: SDL_AcquireGPUCommandBuffer failed: {s}\n", .{sdl.SDL_GetError()});
         return 1;
@@ -291,15 +349,19 @@ pub fn main() !u8 {
         return 1;
     };
 
-    // Upload both buffers using the same copy pass
-    try uploadToBuffer(device, copy_pass, Vertex, &vertices, vertex_buffer);
-    try uploadToBuffer(device, copy_pass, u16, &indices, index_buffer);
+    // Upload vertex data (at offset 0)
+    try uploadToGPU(device, copy_pass, transfer_buffer, 0, Vertex, &vertices, vertex_buffer);
 
-    // End the copy pass after all uploads
+    // Upload index data (at offset after vertex data)
+    try uploadToGPU(device, copy_pass, transfer_buffer, vertices_byte_size, u16, &indices, index_buffer);
+    try uploadTextureGPU(device, copy_pass, texture_transfer_buffer, texture, 0, u8, &pixels, texture_size, texture_byte_size);
+
+    // End the copy pass and submit the command buffer
     sdl.SDL_EndGPUCopyPass(copy_pass);
 
-    // Submit the command buffer
     _ = sdl.SDL_SubmitGPUCommandBuffer(upload_cmdbuf);
+
+    const sampler = sdl.SDL_CreateGPUSampler(device, &sdl.SDL_GPUSamplerCreateInfo{});
 
     const vertex_buffer_desc = sdl.SDL_GPUVertexBufferDescription{
         .slot = 0,
@@ -318,8 +380,14 @@ pub fn main() !u8 {
         .{
             .location = 1,
             .buffer_slot = 0,
-            .format = sdl.SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
+            .format = sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
             .offset = @sizeOf(Vec3),
+        },
+        .{
+            .location = 2,
+            .buffer_slot = 0,
+            .format = sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
+            .offset = @sizeOf(Vec2),
         },
     };
 
@@ -334,7 +402,7 @@ pub fn main() !u8 {
             .vertex_buffer_descriptions = &vertex_buffer_desc,
             .num_vertex_buffers = 1,
             .vertex_attributes = &vertex_attributes,
-            .num_vertex_attributes = 2,
+            .num_vertex_attributes = 3,
         },
         .target_info = .{
             .num_color_targets = 1,
@@ -443,16 +511,18 @@ pub fn main() !u8 {
         sdl.SDL_BindGPUIndexBuffer(render_pass, &.{ .buffer = index_buffer, .offset = 0 }, sdl.SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
         rotation += ROTATION_SPEED * delta_time;
-        const model_mat = Mat4.mul(
-            Mat4.fromTranslate(Vec3.new(0, 0, translate_z)),
-
-            Mat4.fromRotation(rotation, Vec3.new(0, 1, 0)),
-        );
+        const model_mat = Mat4.fromTranslate(Vec3.new(0, 0, translate_z));
+        // const model_mat = Mat4.mul(
+        //     Mat4.fromTranslate(Vec3.new(0, 0, translate_z)),
+        //
+        //     Mat4.fromRotation(rotation, Vec3.new(0, 1, 0)),
+        // );
 
         const ubo: UniformBufferObejct = .{
             .mvp = Mat4.mul(projection_mat, model_mat),
         };
         sdl.SDL_PushGPUVertexUniformData(cmdbuf, 0, &ubo, @sizeOf(UniformBufferObejct));
+        sdl.SDL_BindGPUFragmentSamplers(render_pass, 0, &(sdl.SDL_GPUTextureSamplerBinding{ .texture = texture, .sampler = sampler }), 1);
         sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(indices.len), 1, 0, 0, 0);
         sdl.SDL_EndGPURenderPass(render_pass);
 
