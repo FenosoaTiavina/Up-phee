@@ -26,7 +26,9 @@ const Vertex = struct {
 };
 
 const UniformBufferObejct = struct {
-    mvp: Mat4,
+    model: Mat4,
+    view: Mat4,
+    projection: Mat4,
 };
 /// END: Types -------------------------------------------------------------------------------------------------------------
 const WINDOW_WIDTH = 1200;
@@ -186,11 +188,11 @@ fn uploadTextureGPU(
         .offset = buffer_offset,
     };
 
-    // Fix: correct width and height parameters
+    // FIX: correct width and height parameters
     const texture_region = sdl.SDL_GPUTextureRegion{
         .texture = texture,
         .w = @intCast(image_size.x()),
-        .h = @intCast(image_size.y()), // Fixed: was using 'y' property instead of 'h'
+        .h = @intCast(image_size.y()), // FIXed: was using 'y' property instead of 'h'
         .d = 1,
     };
 
@@ -226,7 +228,7 @@ pub fn main() !u8 {
     defer sdl.SDL_ReleaseWindowFromGPUDevice(device, window);
 
     // Load shaders + create fill/line pipeline
-    // Fix: Increase sampler count for vertex shader to 0 and for fragment shader to 1
+    // FIX: Increase sampler count for vertex shader to 0 and for fragment shader to 1
     const shader_vert = loadShader(device, "shaders/compiled/PositionColor.vert.spv", sdl.SDL_GPU_SHADERSTAGE_VERTEX, 1, 0, 0, 0);
     if (shader_vert == null) {
         std.log.err("ERROR: load_shader failed\n", .{});
@@ -251,7 +253,7 @@ pub fn main() !u8 {
         4,
     );
 
-    // Fix: Calculate correct byte size
+    // FIX: Calculate correct byte size
     const texture_byte_size: u32 = @intCast(texture_size.x() * texture_size.y() * 4);
     if (image_data != null) {
         pixels = image_data[0..@intCast(texture_size.x() * texture_size.y() * 4)];
@@ -264,14 +266,14 @@ pub fn main() !u8 {
         std.debug.print("failed to load \"{s}\": {s}\n", .{ "assets/kenney_prototypeTextures/PNG/Purple/texture_10.png", stb.stbi_failure_reason() });
         return 1;
     }
-    defer stb.stbi_image_free(image_data); // Fix: Free the image data after use
+    defer stb.stbi_image_free(image_data); // FIX: Free the image data after use
 
-    // Fix: Correct texture width and height
+    // FIX: Correct texture width and height
     const texture = sdl.SDL_CreateGPUTexture(device, &sdl.SDL_GPUTextureCreateInfo{
         .type = sdl.SDL_GPU_TEXTURETYPE_2D,
         .format = sdl.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-        .width = @intCast(texture_size.x()), // Fixed: was switched
-        .height = @intCast(texture_size.y()), // Fixed: was switched
+        .width = @intCast(texture_size.x()), // FIXed: was switched
+        .height = @intCast(texture_size.y()), // FIXed: was switched
         .layer_count_or_depth = 1,
         .num_levels = 1,
         .usage = sdl.SDL_GPU_TEXTUREUSAGE_SAMPLER,
@@ -281,7 +283,7 @@ pub fn main() !u8 {
     };
     defer sdl.SDL_ReleaseGPUTexture(device, texture);
 
-    // Fix: Corrected UV coordinates for the vertices
+    // FIX: Corrected UV coordinates for the vertices
     const vertices = [_]Vertex{
         .{ // top-left
             .position = za.Vec3.new(-0.5, 0.5, 0),
@@ -381,7 +383,7 @@ pub fn main() !u8 {
         .instance_step_rate = 0,
     };
 
-    // Fix: Correct the vertex attribute layout
+    // FIX: Correct the vertex attribute layout
     const vertex_attributes = [_]sdl.SDL_GPUVertexAttribute{
         .{ // Position
             .location = 0,
@@ -407,7 +409,7 @@ pub fn main() !u8 {
         .format = sdl.SDL_GetGPUSwapchainTextureFormat(device, window),
     };
 
-    // Fix: Use correct number of vertex attributes
+    // FIX: Use correct number of vertex attributes
     const pipeline_info = sdl.SDL_GPUGraphicsPipelineCreateInfo{
         .vertex_shader = shader_vert,
         .fragment_shader = shader_frag,
@@ -415,7 +417,7 @@ pub fn main() !u8 {
             .vertex_buffer_descriptions = &vertex_buffer_desc,
             .num_vertex_buffers = 1,
             .vertex_attributes = &vertex_attributes,
-            .num_vertex_attributes = 3, // Fixed: was 2, needs to be 3 for position, color, uv
+            .num_vertex_attributes = 3, // FIXed: was 2, needs to be 3 for position, color, uv
         },
         .target_info = .{
             .num_color_targets = 1,
@@ -423,7 +425,7 @@ pub fn main() !u8 {
         },
         .primitive_type = sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .rasterizer_state = .{
-            .fill_mode = sdl.SDL_GPU_FILLMODE_FILL,
+            .fill_mode = sdl.SDL_GPU_FILLMODE_LINE,
         },
     };
 
@@ -439,16 +441,20 @@ pub fn main() !u8 {
     var w: c_int = @intCast(WINDOW_WIDTH);
     var h: c_int = @intCast(WINDOW_HEIGHT);
     _ = sdl.SDL_GetWindowSize(window, &w, &h);
-    // Fix: Calculate aspect ratio correctly
+    // FIX: Calculate aspect ratio correctly
     const aspect: f32 = @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(h));
 
     const ROTATION_SPEED = 90.0;
     var rotation: f32 = 0.0;
-    var translate_z: f32 = -2.0; // Fix: Start with a negative Z to see the quad
-    const MOVE_SPEED = 0.2;
+    var translate_z: f32 = 0.0; // FIX: Start with a negative Z to see the quad
+    const MOVE_SPEED = 0.7;
 
-    const projection_mat: Mat4 = za.perspective(70.0, aspect, 0.1, 1000.0); // Fix: Use more reasonable near/far planes
+    const projection_mat: Mat4 = za.perspective(70.0, aspect, 0.0001, 10000.0); // FIX: Use more reasonable near/far planes
     var quit = false;
+
+    var camera_pos = Vec3.new(0.0, 0.0, 0.0);
+    const camera_front = Vec3.new(0.0, 0.0, -1.0);
+    const camera_up = Vec3.new(0.0, 1.0, 0.0);
 
     var last_ticks = sdl.SDL_GetTicks();
     while (!quit) {
@@ -467,10 +473,10 @@ pub fn main() !u8 {
                             quit = true;
                         },
                         sdl.SDLK_W => {
-                            translate_z -= MOVE_SPEED; // Move forward
+                            translate_z += MOVE_SPEED; // Move forward
                         },
                         sdl.SDLK_S => {
-                            translate_z += MOVE_SPEED; // Move backward
+                            translate_z -= MOVE_SPEED; // Move backward
                         },
                         else => {},
                     }
@@ -532,9 +538,12 @@ pub fn main() !u8 {
             Mat4.fromTranslate(Vec3.new(0, 0, translate_z)),
             Mat4.fromRotation(rotation, Vec3.new(0, 1, 0)),
         );
+        const view = za.lookAt(camera_pos, camera_pos.add(camera_front), camera_up);
 
         const ubo: UniformBufferObejct = .{
-            .mvp = Mat4.mul(projection_mat, model_mat),
+            .model = model_mat,
+            .view = view,
+            .projection = projection_mat,
         };
 
         // Push uniform data
