@@ -473,10 +473,10 @@ pub fn main() !u8 {
                             quit = true;
                         },
                         sdl.SDLK_W => {
-                            translate_z += MOVE_SPEED; // Move forward
+                            camera_pos = camera_pos.add(Vec3.new(0, 0, MOVE_SPEED));
                         },
                         sdl.SDLK_S => {
-                            translate_z -= MOVE_SPEED; // Move backward
+                            camera_pos = camera_pos.sub(Vec3.new(0, 0, MOVE_SPEED));
                         },
                         else => {},
                     }
