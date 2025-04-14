@@ -1,54 +1,53 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
+pub fn build(builder: *std.Build) !void {
+    const target = builder.standardTargetOptions(.{});
+    const optimize = .Debug;
 
-    const optimize = b.standardOptimizeOption(.{});
-
-    const sdl_dep = b.dependency("sdl", .{
-        .target = target,
-        .optimize = optimize,
-        //.preferred_linkage = .static,
-        //.strip = null,
-        //.pic = null,
-        //.lto = null,
-        //.emscripten_pthreads = false,
-        //.install_build_config_h = false,
-    });
-
-    const sdl_lib = sdl_dep.artifact("SDL3");
-
-    const exe_mod = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
+    var exe: *std.Build.Step.Compile = undefined;
+    exe = builder.addExecutable(.{
+        .name = "game_sdl3",
+        .root_source_file = builder.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const exe = b.addExecutable(.{
-        .name = "sdl3",
-        .root_module = exe_mod,
-    });
-
-    const zalgebra = b.dependency("zalgebra", .{
+    const zalgebra = builder.dependency("zalgebra", .{
         .target = target,
         .optimize = optimize,
     });
     exe.root_module.addImport("zalgebra", zalgebra.module("zalgebra"));
+
+    const zgui = builder.dependency("zgui", .{
+        .target = target,
+        .backend = .sdl3_gpu,
+        // .with_implot = true,
+        // .with_node_editor = true,
+        // .with_te = true,
+    });
+    exe.root_module.addImport("zgui", zgui.module("root"));
+    exe.linkLibrary(zgui.artifact("imgui"));
+
+    exe.linkSystemLibrary("sdl3");
+
     exe.addCSourceFiles(.{
         .files = &[_][]const u8{"c/stb_image.c"},
-    }); // -g adds debug info, makes it easier to debug
-    exe.linkLibrary(sdl_lib);
+    });
 
-    b.installArtifact(exe);
+    builder.installArtifact(exe);
 
-    const run_cmd = b.addRunArtifact(exe);
+    try run(exe, builder);
+}
 
-    run_cmd.step.dependOn(b.getInstallStep());
+fn run(exe: *std.Build.Step.Compile, builder: *std.Build) !void {
+    const run_cmd = builder.addRunArtifact(exe);
 
-    if (b.args) |args| {
+    run_cmd.step.dependOn(builder.getInstallStep());
+
+    if (builder.args) |args| {
         run_cmd.addArgs(args);
     }
 
-    const run_step = b.step("run", "Run the app");
+    const run_step = builder.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 }

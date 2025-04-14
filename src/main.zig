@@ -1,35 +1,106 @@
 const std = @import("std");
-
-const za = @import("zalgebra");
-/// END : IMPORTS -------------------------------------------------------------------------------------------------------------
-const Vec2 = za.Vec2;
-const Vec3 = za.Vec3;
-const Vec4_u8 = za.GenericVector(4, u8);
-const Vec4 = za.Vec4;
-const Mat4 = za.Mat4;
-
-const stb = @cImport({
-    @cInclude("stb/stb_image.h");
-});
-
 const sdl = @cImport({
+    @cDefine("SDL_DISABLE_OLD_NAMES", {});
     @cInclude("SDL3/SDL.h");
     @cInclude("SDL3/SDL_gpu.h");
     @cInclude("SDL3/SDL_pixels.h");
     @cInclude("SDL3/SDL_video.h");
+    @cInclude("SDL3/SDL_vulkan.h");
 });
+const zgui = @import("zgui");
+
+const stb = @cImport({
+    @cInclude("stb/stb_image.h");
+});
+const za = @import("zalgebra");
+
+/// END : IMPORTS -------------------------------------------------------------------------------------------------------------
+const Vec2_f32 = za.GenericVector(2, f32);
+const Vec2_usize = za.GenericVector(2, usize);
+
+const Vec3_f32 = za.GenericVector(3, f32);
+
+const Vec4_u8 = za.GenericVector(4, u8);
+const Vec4_f32 = za.GenericVector(4, f32);
+const Mat4_f32 = za.Mat4x4(f32);
 
 const Vertex = struct {
     position: za.Vec3,
-    color: Vec4,
-    uv: Vec2,
+    color: Vec4_f32,
+    uv: Vec2_f32,
 };
 
 const UniformBufferObejct = struct {
-    model: Mat4,
-    view: Mat4,
-    projection: Mat4,
+    model: Mat4_f32,
+    view: Mat4_f32,
+    projection: Mat4_f32,
 };
+
+const Camera = struct {
+    position: Vec3_f32 = Vec3_f32.zero(),
+    look_at: Vec3_f32 = Vec3_f32.zero(),
+    view: Mat4_f32 = Mat4_f32.zero(),
+
+    fn get_position(self: *Camera) Vec3_f32 {
+        return self.position;
+    }
+    fn update_position(self: *Camera, p_new_position: Vec3_f32) Vec3_f32 {
+        self.*.position = p_new_position;
+        return self.position;
+    }
+
+    fn view_matrix(self: *Camera) Mat4_f32 {
+        return za.lookAt(self.position, self.look_at, Vec3_f32.up());
+    }
+};
+
+const World = struct {};
+
+const Window = struct {
+    sdl_window: *sdl.SDL_Window,
+    window_title: [*c]u8,
+    window_dimension: Vec2_usize,
+
+    fn getAspectRatio(self: *Window) f32 {
+        var w: c_int = @intCast(WINDOW_WIDTH);
+        var h: c_int = @intCast(WINDOW_HEIGHT);
+        _ = sdl.SDL_GetWindowSize(self.window, &w, &h);
+        return @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(h));
+    }
+
+    fn setup_window(self: *Window, window_title: []const u8, window_dimenseion: Vec2_usize) void {
+        self.*.window_dimension = window_title;
+        self.*.window_dimension = window_dimenseion;
+    }
+
+    fn init_sdl_window(self: *Window) !void {
+        if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO)) {
+            std.log.err("ERROR: SDL_Init failed: {s}\n", .{sdl.SDL_GetError()});
+            return error.WindowInit;
+        }
+        self.sdl_window = sdl.SDL_CreateWindow(self.window_title, self.window_dimension.x(), self.window_dimension.y(), sdl.SDL_WINDOW_VULKAN | sdl.SDL_WINDOW_RESIZABLE) orelse {
+            std.log.err("ERROR: SDL_CreateWindow failed: {s}\n", .{sdl.SDL_GetError()});
+            return error.windowcreation;
+        };
+    }
+
+    fn get_sdl_window(self: *Window) *sdl.SDL_Window {
+        return self.sdl_window;
+    }
+
+    fn destroy_and_quit(self: *Window) void {
+        sdl.SDL_DestroyWindow(self.sdl_window);
+        sdl.SDL_Quit();
+    }
+};
+
+const Renderer = struct {
+    g_window: *Window,
+    gpu_device: *sdl.SDL_GPUDevice,
+
+    fn prepareFrame() !void {}
+};
+
 /// END: Types -------------------------------------------------------------------------------------------------------------
 const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
@@ -66,6 +137,13 @@ fn printEvent(event: sdl.SDL_Event) void {
         sdl.SDL_EVENT_WINDOW_HIT_TEST => std.log.info("Event: Window {s}", .{"HIT_TEST"}),
         else => std.log.info("Event: Unknown event type {d}", .{event.type}),
     }
+}
+
+fn getAspectRatio(window: *sdl.SDL_Window) f32 {
+    var w: c_int = @intCast(WINDOW_WIDTH);
+    var h: c_int = @intCast(WINDOW_HEIGHT);
+    _ = sdl.SDL_GetWindowSize(window, &w, &h);
+    return @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(h));
 }
 
 fn loadShader(
@@ -206,11 +284,10 @@ pub fn main() !u8 {
     }
     defer sdl.SDL_Quit();
 
-    const window = sdl.SDL_CreateWindow("Pressure Simulation", WINDOW_WIDTH, WINDOW_HEIGHT, sdl.SDL_WINDOW_VULKAN | sdl.SDL_WINDOW_RESIZABLE);
-    if (window == null) {
+    const window = sdl.SDL_CreateWindow("Pressure Simulation", WINDOW_WIDTH, WINDOW_HEIGHT, sdl.SDL_WINDOW_VULKAN | sdl.SDL_WINDOW_RESIZABLE) orelse {
         std.log.err("ERROR: SDL_CreateWindow failed: {s}\n", .{sdl.SDL_GetError()});
         return 1;
-    }
+    };
     defer sdl.SDL_DestroyWindow(window);
 
     const device = sdl.SDL_CreateGPUDevice(sdl.SDL_GPU_SHADERFORMAT_SPIRV, true, null) orelse {
@@ -226,6 +303,8 @@ pub fn main() !u8 {
         return 1;
     }
     defer sdl.SDL_ReleaseWindowFromGPUDevice(device, window);
+
+    _ = sdl.SDL_SetGPUSwapchainParameters(device, window, sdl.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, sdl.SDL_GPU_PRESENTMODE_MAILBOX);
 
     // Load shaders + create fill/line pipeline
     // FIX: Increase sampler count for vertex shader to 0 and for fragment shader to 1
@@ -287,23 +366,23 @@ pub fn main() !u8 {
     const vertices = [_]Vertex{
         .{ // top-left
             .position = za.Vec3.new(-0.5, 0.5, 0),
-            .color = Vec4.new(1.0, 1.0, 1.0, 1.0),
-            .uv = Vec2.new(0.0, 0.0),
+            .color = Vec4_f32.new(1.0, 1.0, 1.0, 1.0),
+            .uv = Vec2_f32.new(0.0, 0.0),
         },
         .{ // top-right
             .position = za.Vec3.new(0.5, 0.5, 0),
-            .color = Vec4.new(1.0, 1.0, 1.0, 1.0),
-            .uv = Vec2.new(1.0, 0.0),
+            .color = Vec4_f32.new(1.0, 1.0, 1.0, 1.0),
+            .uv = Vec2_f32.new(1.0, 0.0),
         },
         .{ // bottom-right
             .position = za.Vec3.new(0.5, -0.5, 0),
-            .color = Vec4.new(1.0, 1.0, 1.0, 1.0),
-            .uv = Vec2.new(1.0, 1.0),
+            .color = Vec4_f32.new(1.0, 1.0, 1.0, 1.0),
+            .uv = Vec2_f32.new(1.0, 1.0),
         },
         .{ // bottom-left
             .position = za.Vec3.new(-0.5, -0.5, 0),
-            .color = Vec4.new(1.0, 1.0, 1.0, 1.0),
-            .uv = Vec2.new(0.0, 1.0),
+            .color = Vec4_f32.new(1.0, 1.0, 1.0, 1.0),
+            .uv = Vec2_f32.new(0.0, 1.0),
         },
     };
 
@@ -438,31 +517,51 @@ pub fn main() !u8 {
 
     _ = sdl.SDL_SetWindowPosition(window, sdl.SDL_WINDOWPOS_CENTERED, sdl.SDL_WINDOWPOS_CENTERED);
 
-    var w: c_int = @intCast(WINDOW_WIDTH);
-    var h: c_int = @intCast(WINDOW_HEIGHT);
-    _ = sdl.SDL_GetWindowSize(window, &w, &h);
-    // FIX: Calculate aspect ratio correctly
-    const aspect: f32 = @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(h));
+    var gpa_state = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa_state.deinit();
+    const gpa = gpa_state.allocator();
+    zgui.init(gpa);
+    defer zgui.deinit();
+
+    // Setup Dear ImGui style
+    zgui.getStyle().setColorsDark();
+    //zgui.getStyle().setColorsLight();
+
+    // Setup Platform/Renderer backends
+    zgui.backend.init(window, .{
+        .device = device,
+        .color_target_format = sdl.SDL_GetGPUSwapchainTextureFormat(device, window),
+        .msaa_samples = sdl.SDL_GPU_SAMPLECOUNT_1,
+    });
+    defer zgui.backend.deinit();
+
+    var aspect: f32 = getAspectRatio(window);
 
     const ROTATION_SPEED = 90.0;
+    const MOVE_SPEED = 10;
+    const LOOK_SPEED = 1;
+
     var rotation: f32 = 0.0;
-    var translate_z: f32 = 0.0; // FIX: Start with a negative Z to see the quad
-    const MOVE_SPEED = 0.7;
 
-    const projection_mat: Mat4 = za.perspective(70.0, aspect, 0.0001, 10000.0); // FIX: Use more reasonable near/far planes
-    var quit = false;
+    var projection_mat: Mat4_f32 = za.perspective(70.0, aspect, 0.0001, 10000.0); // FIX: Use more reasonable near/far planes
+    var camera_position = za.Vec3.new(0.0, 0.0, -5.0);
+    var camera_target = za.Vec3.zero();
+    var camera_front = za.Vec3.new(0.0, 0.0, -1.0);
 
-    var camera_pos = Vec3.new(0.0, 0.0, 0.0);
-    const camera_front = Vec3.new(0.0, 0.0, -1.0);
-    const camera_up = Vec3.new(0.0, 1.0, 0.0);
-
+    var mouse_grabbed: bool = false;
     var last_ticks = sdl.SDL_GetTicks();
-    while (!quit) {
+    var quit = false;
+    var mouse_coords = Vec2_f32.zero();
+    main_loop: while (!quit) {
         const new_ticks = sdl.SDL_GetTicks();
         const delta_time = @as(f32, @floatFromInt(new_ticks - last_ticks)) / 1000;
         last_ticks = new_ticks;
         var event: sdl.SDL_Event = undefined;
+
         while (sdl.SDL_PollEvent(&event)) {
+            // printEvent(event);
+            _ = zgui.backend.processEvent(&event);
+
             switch (event.type) {
                 sdl.SDL_EVENT_QUIT => {
                     quit = true;
@@ -472,38 +571,88 @@ pub fn main() !u8 {
                         sdl.SDLK_Q => {
                             quit = true;
                         },
-                        sdl.SDLK_W => {
-                            camera_pos = camera_pos.add(Vec3.new(0, 0, MOVE_SPEED));
+                        sdl.SDLK_G => {
+                            mouse_grabbed = !mouse_grabbed;
+                            _ = sdl.SDL_SetWindowMouseGrab(window, mouse_grabbed);
+                            _ = sdl.SDL_SetWindowRelativeMouseMode(window, mouse_grabbed);
                         },
-                        sdl.SDLK_S => {
-                            camera_pos = camera_pos.sub(Vec3.new(0, 0, MOVE_SPEED));
-                        },
+                        sdl.SDLK_W => {},
+                        sdl.SDLK_S => {},
+                        sdl.SDLK_A => {},
+                        sdl.SDLK_D => {},
+
                         else => {},
                     }
                 },
-                sdl.SDL_EVENT_MOUSE_WHEEL => {
-                    translate_z += (event.wheel.y * MOVE_SPEED);
+
+                sdl.SDL_EVENT_MOUSE_MOTION => {
+                    const last_mouse_coords = mouse_coords;
+                    mouse_coords = Vec2_f32.new(event.motion.x, event.motion.y);
+                    if (sdl.SDL_GetWindowMouseGrab(window)) {
+                        if (mouse_coords.x() > last_mouse_coords.x()) {
+                            camera_target.xMut().* -= LOOK_SPEED * delta_time;
+                        } else if (mouse_coords.x() < last_mouse_coords.x()) {
+                            camera_target.xMut().* += LOOK_SPEED * delta_time;
+                        }
+                        if (mouse_coords.y() > last_mouse_coords.y()) {
+                            camera_target.yMut().* -= LOOK_SPEED * delta_time;
+                        } else if (mouse_coords.y() < last_mouse_coords.y()) {
+                            camera_target.yMut().* += LOOK_SPEED * delta_time;
+                        }
+                    }
                 },
+
+                sdl.SDL_EVENT_WINDOW_RESIZED => {
+                    aspect = getAspectRatio(window);
+                    projection_mat = za.perspective(70.0, aspect, 0.0001, 10000.0); // FIX: Use more reasonable near/far planes
+
+                },
+
                 else => {},
             }
         }
 
-        const cmdbuf = sdl.SDL_AcquireGPUCommandBuffer(device);
-        if (cmdbuf == null) {
+        var fb_width: c_int = 0;
+        var fb_height: c_int = 0;
+        if (!sdl.SDL_GetWindowSize(window, &fb_width, &fb_height)) {
+            std.log.err("SDL_GetWindowSizeInPixels failed: {s}\n", .{sdl.SDL_GetError()});
+            return 1;
+        }
+
+        const fb_scale = sdl.SDL_GetWindowDisplayScale(window);
+        zgui.backend.newFrame(@intCast(fb_width), @intCast(fb_height), fb_scale);
+
+        // Show a simple window
+        zgui.setNextWindowPos(.{ .x = 20.0, .y = 20.0, .cond = .first_use_ever });
+        zgui.setNextWindowSize(.{ .w = -1.0, .h = -1.0, .cond = .first_use_ever });
+        if (zgui.begin("info", .{})) {
+            zgui.text("camera position :{any},{any},{any}", .{
+                camera_position.x(),
+                camera_position.y(),
+                camera_position.z(),
+            });
+        }
+        zgui.end();
+
+        // The SDL3+GPU backend requires calling zgui.backend.render() before rendering ImGui
+        zgui.backend.render();
+
+        const command_buffer = sdl.SDL_AcquireGPUCommandBuffer(device);
+        if (command_buffer == null) {
             std.log.err("ERROR: SDL_AcquireGPUCommandBuffer failed: {s}\n", .{sdl.SDL_GetError()});
             break;
         }
 
         var swapchain_texture: ?*sdl.SDL_GPUTexture = null;
-        if (sdl.SDL_WaitAndAcquireGPUSwapchainTexture(cmdbuf, window, &swapchain_texture, null, null) == false) {
+        if (sdl.SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, window, &swapchain_texture, null, null) == false) {
             std.log.err("ERROR: SDL_WaitAndAcquireGPUSwapchainTexture failed: {s}\n", .{sdl.SDL_GetError()});
-            break;
+            break :main_loop;
         }
 
         if (swapchain_texture == null) {
             std.log.err("ERROR: swapchain_texture is NULL\n", .{});
-            _ = sdl.SDL_SubmitGPUCommandBuffer(cmdbuf);
-            break;
+            _ = sdl.SDL_SubmitGPUCommandBuffer(command_buffer);
+            break :main_loop;
         }
 
         var color_target_info = sdl.SDL_GPUColorTargetInfo{
@@ -518,7 +667,9 @@ pub fn main() !u8 {
             .store_op = sdl.SDL_GPU_STOREOP_STORE,
         };
 
-        const render_pass = sdl.SDL_BeginGPURenderPass(cmdbuf, &color_target_info, 1, null) orelse {
+        zgui.backend.prepareDrawData(@ptrCast(command_buffer));
+
+        const render_pass = sdl.SDL_BeginGPURenderPass(command_buffer, &color_target_info, 1, null) orelse {
             std.log.err("ERROR: SDL_BeginGPURenderPass failed: {s}\n", .{sdl.SDL_GetError()});
             return 1;
         };
@@ -532,13 +683,12 @@ pub fn main() !u8 {
         sdl.SDL_BindGPUIndexBuffer(render_pass, &.{ .buffer = index_buffer, .offset = 0 }, sdl.SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
         rotation += ROTATION_SPEED * delta_time;
-
         // Create a model matrix with rotation for better visualization
-        const model_mat = Mat4.mul(
-            Mat4.fromTranslate(Vec3.new(0, 0, translate_z)),
-            Mat4.fromRotation(rotation, Vec3.new(0, 1, 0)),
+        const model_mat = Mat4_f32.mul(
+            Mat4_f32.fromTranslate(Vec3_f32.new(0, 0, 0)),
+            Mat4_f32.fromRotation(rotation, Vec3_f32.new(0, 1, 0)),
         );
-        const view = za.lookAt(camera_pos, camera_pos.add(camera_front), camera_up);
+        const view = za.Mat4.lookAt(camera_position, camera_target, za.Vec3.new(0, 1, 0));
 
         const ubo: UniformBufferObejct = .{
             .model = model_mat,
@@ -547,17 +697,40 @@ pub fn main() !u8 {
         };
 
         // Push uniform data
-        sdl.SDL_PushGPUVertexUniformData(cmdbuf, 0, &ubo, @sizeOf(UniformBufferObejct));
+        sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &ubo, @sizeOf(UniformBufferObejct));
 
         // Bind texture sampler to fragment shader
         sdl.SDL_BindGPUFragmentSamplers(render_pass, 0, &(sdl.SDL_GPUTextureSamplerBinding{ .texture = texture, .sampler = sampler }), 1);
 
         // Draw the quad
         sdl.SDL_DrawGPUIndexedPrimitives(render_pass, @intCast(indices.len), 1, 0, 0, 0);
+        zgui.backend.renderDrawData(@ptrCast(command_buffer), @ptrCast(render_pass), null);
+
         sdl.SDL_EndGPURenderPass(render_pass);
 
-        _ = sdl.SDL_SubmitGPUCommandBuffer(cmdbuf);
+        try errify(sdl.SDL_SubmitGPUCommandBuffer(command_buffer));
     }
 
     return 0;
+}
+
+/// Converts the return value of an SDL function to an error union.
+pub inline fn errify(value: anytype) error{SdlError}!switch (@typeInfo(@TypeOf(value))) {
+    .bool => void,
+    .pointer, .optional => @TypeOf(value.?),
+    .int => |info| switch (info.signedness) {
+        .signed => @TypeOf(@max(0, value)),
+        .unsigned => @TypeOf(value),
+    },
+    else => @compileError("unerrifiable type: " ++ @typeName(@TypeOf(value))),
+} {
+    return switch (@typeInfo(@TypeOf(value))) {
+        .bool => if (!value) error.SdlError,
+        .pointer, .optional => value orelse error.SdlError,
+        .int => |info| switch (info.signedness) {
+            .signed => if (value >= 0) @max(0, value) else error.SdlError,
+            .unsigned => if (value != 0) value else error.SdlError,
+        },
+        else => comptime unreachable,
+    };
 }

@@ -44,6 +44,10 @@
             .url = "git+https://github.com/kooparse/zalgebra.git#8685b39c606c0d907052478d0f55249051e7730d",
             .hash = "zalgebra-0.0.0-aaiVSj5nAQDFe0Cnx-aoGE2HzVtg1Ij62auYZ6nxR9do",
         },
+        .zgui = .{
+            .url = "git+https://github.com/zig-gamedev/zgui.git#0f2e9c7b50b2b5f36243ac8028f38adfe289303b",
+            .hash = "zgui-0.6.0-dev--L6sZJWZaAAJXsX2Alyo89zyb0El4LV37XxEhPz1H9ql",
+        },
     },
     .paths = .{
         "build.zig",
