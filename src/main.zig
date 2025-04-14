@@ -1,4 +1,8 @@
 const std = @import("std");
+
+const zgui = @import("zgui");
+const zm = @import("zmath");
+
 const sdl = @cImport({
     @cDefine("SDL_DISABLE_OLD_NAMES", {});
     @cInclude("SDL3/SDL.h");
@@ -7,25 +11,21 @@ const sdl = @cImport({
     @cInclude("SDL3/SDL_video.h");
     @cInclude("SDL3/SDL_vulkan.h");
 });
-const zgui = @import("zgui");
-
 const stb = @cImport({
     @cInclude("stb/stb_image.h");
 });
-const za = @import("zalgebra");
-
 /// END : IMPORTS -------------------------------------------------------------------------------------------------------------
-const Vec2_f32 = za.GenericVector(2, f32);
-const Vec2_usize = za.GenericVector(2, usize);
+const Vec2_f32 = @Vector(2, f32);
+const Vec2_usize = @Vector(2, usize);
 
-const Vec3_f32 = za.GenericVector(3, f32);
+const Vec3_f32 = @Vector(3, f32);
 
-const Vec4_u8 = za.GenericVector(4, u8);
-const Vec4_f32 = za.GenericVector(4, f32);
-const Mat4_f32 = za.Mat4x4(f32);
+const Vec4_u8 = @Vector(4, u8);
+const Vec4_f32 = @Vector(4, f32);
+const Mat4_f32 = [4]Vec4_f32;
 
 const Vertex = struct {
-    position: za.Vec3,
+    position: Vec3_f32,
     color: Vec4_f32,
     uv: Vec2_f32,
 };
@@ -50,7 +50,7 @@ const Camera = struct {
     }
 
     fn view_matrix(self: *Camera) Mat4_f32 {
-        return za.lookAt(self.position, self.look_at, Vec3_f32.up());
+        return zm.lookAt(self.position, self.look_at, Vec3_f32.up());
     }
 };
 
@@ -78,7 +78,7 @@ const Window = struct {
             std.log.err("ERROR: SDL_Init failed: {s}\n", .{sdl.SDL_GetError()});
             return error.WindowInit;
         }
-        self.sdl_window = sdl.SDL_CreateWindow(self.window_title, self.window_dimension.x(), self.window_dimension.y(), sdl.SDL_WINDOW_VULKAN | sdl.SDL_WINDOW_RESIZABLE) orelse {
+        self.sdl_window = sdl.SDL_CreateWindow(self.window_title, self.window_dimension[0], self.window_dimension[1], sdl.SDL_WINDOW_VULKAN | sdl.SDL_WINDOW_RESIZABLE) orelse {
             std.log.err("ERROR: SDL_CreateWindow failed: {s}\n", .{sdl.SDL_GetError()});
             return error.windowcreation;
         };
@@ -247,7 +247,7 @@ fn uploadTextureGPU(
     buffer_offset: u32,
     comptime T: type,
     images_data: *[]u8,
-    image_size: za.Vec2_usize,
+    image_size: Vec2_usize,
     image_byte_size: usize,
 ) !void {
     // Map the buffer memory
@@ -269,8 +269,8 @@ fn uploadTextureGPU(
     // FIX: correct width and height parameters
     const texture_region = sdl.SDL_GPUTextureRegion{
         .texture = texture,
-        .w = @intCast(image_size.x()),
-        .h = @intCast(image_size.y()), // FIXed: was using 'y' property instead of 'h'
+        .w = @intCast(image_size[0]),
+        .h = @intCast(image_size[1]), // FIXed: was using 'y' property instead of 'h'
         .d = 1,
     };
 
@@ -322,23 +322,23 @@ pub fn main() !u8 {
     }
     defer sdl.SDL_ReleaseGPUShader(device, shader_frag);
 
-    var texture_size = za.Vec2_usize.new(0, 0);
+    var texture_size = Vec2_usize{ 0, 0 };
     var pixels: []u8 = undefined;
     var image_data: [*c]u8 = stb.stbi_load(
         "assets/kenney_prototypeTextures/PNG/Purple/texture_10.png",
-        @ptrCast(texture_size.xMut()),
-        @ptrCast(texture_size.yMut()),
+        @ptrCast(&texture_size[0]),
+        @ptrCast(&texture_size[1]),
         null,
         4,
     );
 
     // FIX: Calculate correct byte size
-    const texture_byte_size: u32 = @intCast(texture_size.x() * texture_size.y() * 4);
+    const texture_byte_size: u32 = @intCast(texture_size[0] * texture_size[1] * 4);
     if (image_data != null) {
-        pixels = image_data[0..@intCast(texture_size.x() * texture_size.y() * 4)];
+        pixels = image_data[0..@intCast(texture_size[0] * texture_size[1] * 4)];
         std.log.debug("images {d}x{d}: {d}", .{
-            texture_size.x(),
-            texture_size.y(),
+            texture_size[0],
+            texture_size[1],
             texture_byte_size,
         });
     } else {
@@ -351,8 +351,8 @@ pub fn main() !u8 {
     const texture = sdl.SDL_CreateGPUTexture(device, &sdl.SDL_GPUTextureCreateInfo{
         .type = sdl.SDL_GPU_TEXTURETYPE_2D,
         .format = sdl.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-        .width = @intCast(texture_size.x()), // FIXed: was switched
-        .height = @intCast(texture_size.y()), // FIXed: was switched
+        .width = @intCast(texture_size[0]), // FIXed: was switched
+        .height = @intCast(texture_size[1]), // FIXed: was switched
         .layer_count_or_depth = 1,
         .num_levels = 1,
         .usage = sdl.SDL_GPU_TEXTUREUSAGE_SAMPLER,
@@ -365,24 +365,24 @@ pub fn main() !u8 {
     // FIX: Corrected UV coordinates for the vertices
     const vertices = [_]Vertex{
         .{ // top-left
-            .position = za.Vec3.new(-0.5, 0.5, 0),
-            .color = Vec4_f32.new(1.0, 1.0, 1.0, 1.0),
-            .uv = Vec2_f32.new(0.0, 0.0),
+            .position = Vec3_f32{ -0.5, 0.5, 0 },
+            .color = Vec4_f32{ 1.0, 1.0, 1.0, 1.0 },
+            .uv = Vec2_f32{ 0.0, 0.0 },
         },
         .{ // top-right
-            .position = za.Vec3.new(0.5, 0.5, 0),
-            .color = Vec4_f32.new(1.0, 1.0, 1.0, 1.0),
-            .uv = Vec2_f32.new(1.0, 0.0),
+            .position = Vec3_f32{ 0.5, 0.5, 0 },
+            .color = Vec4_f32{ 1.0, 1.0, 1.0, 1.0 },
+            .uv = Vec2_f32{ 1.0, 0.0 },
         },
         .{ // bottom-right
-            .position = za.Vec3.new(0.5, -0.5, 0),
-            .color = Vec4_f32.new(1.0, 1.0, 1.0, 1.0),
-            .uv = Vec2_f32.new(1.0, 1.0),
+            .position = Vec3_f32{ 0.5, -0.5, 0 },
+            .color = Vec4_f32{ 1.0, 1.0, 1.0, 1.0 },
+            .uv = Vec2_f32{ 1.0, 1.0 },
         },
         .{ // bottom-left
-            .position = za.Vec3.new(-0.5, -0.5, 0),
-            .color = Vec4_f32.new(1.0, 1.0, 1.0, 1.0),
-            .uv = Vec2_f32.new(0.0, 1.0),
+            .position = Vec3_f32{ -0.5, -0.5, 0 },
+            .color = Vec4_f32{ 1.0, 1.0, 1.0, 1.0 },
+            .uv = Vec2_f32{ 0.0, 1.0 },
         },
     };
 
@@ -504,7 +504,7 @@ pub fn main() !u8 {
         },
         .primitive_type = sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .rasterizer_state = .{
-            .fill_mode = sdl.SDL_GPU_FILLMODE_LINE,
+            .fill_mode = sdl.SDL_GPU_FILLMODE_FILL,
         },
     };
 
@@ -539,19 +539,22 @@ pub fn main() !u8 {
 
     const ROTATION_SPEED = 90.0;
     const MOVE_SPEED = 10;
+    _ = MOVE_SPEED; // autofix
     const LOOK_SPEED = 1;
+    _ = LOOK_SPEED; // autofix
 
     var rotation: f32 = 0.0;
 
-    var projection_mat: Mat4_f32 = za.perspective(70.0, aspect, 0.0001, 10000.0); // FIX: Use more reasonable near/far planes
-    var camera_position = za.Vec3.new(0.0, 0.0, -5.0);
-    var camera_target = za.Vec3.zero();
-    var camera_front = za.Vec3.new(0.0, 0.0, -1.0);
+    var projection_mat: Mat4_f32 = zm.perspectiveFovRh(70.0, aspect, 0.0001, 10000.0); // FIX: Use more reasonable near/far planes
+    const camera_position = Vec4_f32{ 0.0, 0.0, -5.0, 1.0 };
+    const camera_target = Vec4_f32{ 0, 0, 0, 1.0 };
+    const camera_front = Vec4_f32{ 0.0, 0.0, -1.0, 1.0 };
+    _ = camera_front; // autofix
 
     var mouse_grabbed: bool = false;
     var last_ticks = sdl.SDL_GetTicks();
     var quit = false;
-    var mouse_coords = Vec2_f32.zero();
+    var mouse_coords = Vec2_f32{ 0, 0 };
     main_loop: while (!quit) {
         const new_ticks = sdl.SDL_GetTicks();
         const delta_time = @as(f32, @floatFromInt(new_ticks - last_ticks)) / 1000;
@@ -587,24 +590,16 @@ pub fn main() !u8 {
 
                 sdl.SDL_EVENT_MOUSE_MOTION => {
                     const last_mouse_coords = mouse_coords;
-                    mouse_coords = Vec2_f32.new(event.motion.x, event.motion.y);
+                    mouse_coords = Vec2_f32{ event.motion.x, event.motion.y };
                     if (sdl.SDL_GetWindowMouseGrab(window)) {
-                        if (mouse_coords.x() > last_mouse_coords.x()) {
-                            camera_target.xMut().* -= LOOK_SPEED * delta_time;
-                        } else if (mouse_coords.x() < last_mouse_coords.x()) {
-                            camera_target.xMut().* += LOOK_SPEED * delta_time;
-                        }
-                        if (mouse_coords.y() > last_mouse_coords.y()) {
-                            camera_target.yMut().* -= LOOK_SPEED * delta_time;
-                        } else if (mouse_coords.y() < last_mouse_coords.y()) {
-                            camera_target.yMut().* += LOOK_SPEED * delta_time;
-                        }
+                        if (mouse_coords[0] > last_mouse_coords[0]) {} else if (mouse_coords[0] < last_mouse_coords[0]) {}
+                        if (mouse_coords[1] > last_mouse_coords[1]) {} else if (mouse_coords[1] < last_mouse_coords[1]) {}
                     }
                 },
 
                 sdl.SDL_EVENT_WINDOW_RESIZED => {
                     aspect = getAspectRatio(window);
-                    projection_mat = za.perspective(70.0, aspect, 0.0001, 10000.0); // FIX: Use more reasonable near/far planes
+                    projection_mat = zm.perspectiveFovRh(70.0, aspect, 0.0001, 10000.0); // FIX: Use more reasonable near/far planes
 
                 },
 
@@ -620,6 +615,7 @@ pub fn main() !u8 {
         }
 
         const fb_scale = sdl.SDL_GetWindowDisplayScale(window);
+
         zgui.backend.newFrame(@intCast(fb_width), @intCast(fb_height), fb_scale);
 
         // Show a simple window
@@ -627,9 +623,9 @@ pub fn main() !u8 {
         zgui.setNextWindowSize(.{ .w = -1.0, .h = -1.0, .cond = .first_use_ever });
         if (zgui.begin("info", .{})) {
             zgui.text("camera position :{any},{any},{any}", .{
-                camera_position.x(),
-                camera_position.y(),
-                camera_position.z(),
+                camera_position[0],
+                camera_position[1],
+                camera_position[2],
             });
         }
         zgui.end();
@@ -684,11 +680,8 @@ pub fn main() !u8 {
 
         rotation += ROTATION_SPEED * delta_time;
         // Create a model matrix with rotation for better visualization
-        const model_mat = Mat4_f32.mul(
-            Mat4_f32.fromTranslate(Vec3_f32.new(0, 0, 0)),
-            Mat4_f32.fromRotation(rotation, Vec3_f32.new(0, 1, 0)),
-        );
-        const view = za.Mat4.lookAt(camera_position, camera_target, za.Vec3.new(0, 1, 0));
+        const model_mat = zm.translationV(Vec4_f32{ 0, 0, 0, 0 });
+        const view = zm.lookAtRh(camera_position, camera_target, Vec4_f32{ 0, 1, 0, 0 });
 
         const ubo: UniformBufferObejct = .{
             .model = model_mat,

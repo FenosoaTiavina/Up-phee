@@ -12,11 +12,17 @@ pub fn build(builder: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const zalgebra = builder.dependency("zalgebra", .{
+    // const zalgebra = builder.dependency("zalgebra", .{
+    //     .target = target,
+    //     .optimize = optimize,
+    // });
+    // exe.root_module.addImport("zalgebra", zalgebra.module("zalgebra"));
+
+    const zmath = builder.dependency("zmath", .{
         .target = target,
         .optimize = optimize,
     });
-    exe.root_module.addImport("zalgebra", zalgebra.module("zalgebra"));
+    exe.root_module.addImport("zmath", zmath.module("root"));
 
     const zgui = builder.dependency("zgui", .{
         .target = target,
@@ -25,6 +31,7 @@ pub fn build(builder: *std.Build) !void {
         // .with_node_editor = true,
         // .with_te = true,
     });
+
     exe.root_module.addImport("zgui", zgui.module("root"));
     exe.linkLibrary(zgui.artifact("imgui"));
 
