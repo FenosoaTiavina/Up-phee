@@ -14,6 +14,7 @@ const sdl = @cImport({
 const stb = @cImport({
     @cInclude("stb/stb_image.h");
 });
+
 /// END : IMPORTS -------------------------------------------------------------------------------------------------------------
 const Vec2_f32 = @Vector(2, f32);
 const Vec2_usize = @Vector(2, usize);
@@ -37,20 +38,136 @@ const UniformBufferObejct = struct {
 };
 
 const Camera = struct {
-    position: Vec3_f32 = Vec3_f32.zero(),
-    look_at: Vec3_f32 = Vec3_f32.zero(),
-    view: Mat4_f32 = Mat4_f32.zero(),
+    position: Vec4_f32,
+    up: Vec4_f32,
+    world_up: Vec4_f32,
+    front: Vec4_f32,
+    right: Vec4_f32,
 
-    fn get_position(self: *Camera) Vec3_f32 {
-        return self.position;
-    }
-    fn update_position(self: *Camera, p_new_position: Vec3_f32) Vec3_f32 {
-        self.*.position = p_new_position;
-        return self.position;
+    // Euler's angles
+    yaw: f32,
+    pitch: f32,
+    roll: f32,
+
+    // Camera movement properties
+    speed: f32,
+    sensitivity: f32,
+
+    // View and projection matrices
+    view_matrix: Mat4_f32,
+    projection_matrix: Mat4_f32,
+
+    pub fn init(position: [3]f32, target: [3]f32, aspect: f32) Camera {
+        const pos = zm.f32x4(position[0], position[1], position[2], 1.0);
+        const tar = zm.f32x4(target[0], target[1], target[2], 1.0);
+        const up = zm.f32x4(0.0, 1.0, 0.0, 0.0);
+        var cam = Camera{
+            .position = pos,
+            .up = up,
+            .world_up = up,
+            .yaw = 0,
+            .pitch = 0,
+            .roll = 0,
+            .front = zm.normalize3(tar - pos),
+            .right = zm.normalize3(zm.cross3(zm.normalize3(tar - pos), up)),
+            .speed = 1,
+            .sensitivity = 0.9,
+            .view_matrix = zm.lookAtRh(pos, tar, up),
+            .projection_matrix = zm.perspectiveFovRh(
+                std.math.degreesToRadians(45.0), // FOV
+                aspect,
+                0.1, // Near plane
+                100.0, // Far plane
+            ),
+        };
+        cam.update();
+        return cam;
     }
 
-    fn view_matrix(self: *Camera) Mat4_f32 {
-        return zm.lookAt(self.position, self.look_at, Vec3_f32.up());
+    pub fn update(self: *Camera) void {
+        var front: Vec4_f32 = Vec4_f32{ 0, 0, 0, 0 };
+        front[0] = @cos(std.math.degreesToRadians(self.yaw)) * @cos(std.math.degreesToRadians(self.pitch));
+        front[1] = @sin(std.math.degreesToRadians(self.pitch));
+        front[2] = @sin(std.math.degreesToRadians(self.yaw)) * @cos(std.math.degreesToRadians(self.pitch));
+
+        self.front = zm.normalize4(front);
+        self.*.right = zm.normalize4(zm.cross3(self.front, self.world_up));
+        self.*.up = zm.normalize4(zm.cross3(self.right, self.front));
+
+        self.view_matrix = zm.lookAtRh(self.position, self.position + self.front, self.up);
+    }
+
+    // Move camera forward in the direction it's facing
+    pub fn moveForward(self: *Camera, amount: f32) void {
+        const direction = zm.normalize3(self.front - self.position);
+        const movement = direction * zm.splat(Vec4_f32, self.speed * amount);
+
+        self.position = self.position + movement;
+        self.front = self.front + movement;
+
+        self.update();
+    }
+
+    // Move camera backward from the direction it's facing
+    pub fn moveBackward(self: *Camera, amount: f32) void {
+        self.moveForward(-amount);
+    }
+
+    // Move camera right (strafe)
+    pub fn moveRight(self: *Camera, amount: f32) void {
+        const forward = zm.normalize3(self.front - self.position);
+        const right = zm.normalize3(zm.cross3(forward, self.up));
+        const movement = right * zm.splat(Vec4_f32, self.speed * amount);
+
+        self.position = self.position + movement;
+        self.front = self.front + movement;
+
+        self.update();
+    }
+
+    // Move camera left (strafe)
+    pub fn moveLeft(self: *Camera, amount: f32) void {
+        self.moveRight(-amount);
+    }
+
+    /// Rotate camera based on mouse/input movement
+    pub fn rotate(self: *Camera, x: f32, y: f32, z: f32, constraint_picth: bool) void {
+        const _x = self.sensitivity * x;
+        const _y = self.sensitivity * y;
+        const _z = self.sensitivity * z;
+
+        self.*.yaw += _x;
+        self.*.pitch += _y;
+        self.*.roll += _z;
+
+        if (constraint_picth) {
+            if (self.*.pitch > 89.0)
+                self.*.pitch = 89.0;
+            if (self.*.pitch < -89.0)
+                self.*.pitch = -89.0;
+        }
+        self.update();
+    }
+
+    pub fn setMovementSpeed(self: *Camera, speed: f32) void {
+        self.*.speed = speed;
+    }
+
+    pub fn resetProjection(self: *Camera, aspect: f32) void {
+        self.*.projection_matrix = zm.perspectiveFovRh(
+            std.math.degreesToRadians(70.0), // FOV
+            aspect,
+            0.1, // Near plane
+            100.0, // Far plane
+        );
+    }
+
+    pub fn getViewMatrix(self: Camera) zm.Mat {
+        return self.view_matrix;
+    }
+
+    pub fn getProjectionMatrix(self: Camera) zm.Mat {
+        return self.projection_matrix;
     }
 };
 
@@ -104,6 +221,27 @@ const Renderer = struct {
 /// END: Types -------------------------------------------------------------------------------------------------------------
 const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
+
+/// Converts the return value of an SDL function to an error union.
+pub inline fn errify(value: anytype) error{SdlError}!switch (@typeInfo(@TypeOf(value))) {
+    .bool => void,
+    .pointer, .optional => @TypeOf(value.?),
+    .int => |info| switch (info.signedness) {
+        .signed => @TypeOf(@max(0, value)),
+        .unsigned => @TypeOf(value),
+    },
+    else => @compileError("unerrifiable type: " ++ @typeName(@TypeOf(value))),
+} {
+    return switch (@typeInfo(@TypeOf(value))) {
+        .bool => if (!value) error.SdlError,
+        .pointer, .optional => value orelse error.SdlError,
+        .int => |info| switch (info.signedness) {
+            .signed => if (value >= 0) @max(0, value) else error.SdlError,
+            .unsigned => if (value != 0) value else error.SdlError,
+        },
+        else => comptime unreachable,
+    };
+}
 
 fn printEvent(event: sdl.SDL_Event) void {
     switch (event.type) {
@@ -537,30 +675,21 @@ pub fn main() !u8 {
 
     var aspect: f32 = getAspectRatio(window);
 
-    const ROTATION_SPEED = 90.0;
+    const ROTATION_SPEED = std.math.degreesToRadians(10); //in radians
     const MOVE_SPEED = 10;
-    _ = MOVE_SPEED; // autofix
-    const LOOK_SPEED = 1;
-    _ = LOOK_SPEED; // autofix
-
     var rotation: f32 = 0.0;
 
-    var projection_mat: Mat4_f32 = zm.perspectiveFovRh(70.0, aspect, 0.0001, 10000.0); // FIX: Use more reasonable near/far planes
-    const camera_position = Vec4_f32{ 0.0, 0.0, -5.0, 1.0 };
-    const camera_target = Vec4_f32{ 0, 0, 0, 1.0 };
-    const camera_front = Vec4_f32{ 0.0, 0.0, -1.0, 1.0 };
-    _ = camera_front; // autofix
-
+    var camera: Camera = Camera.init(.{ 0, 0, -5 }, .{ 0, 0, 0 }, aspect);
     var mouse_grabbed: bool = false;
     var last_ticks = sdl.SDL_GetTicks();
     var quit = false;
-    var mouse_coords = Vec2_f32{ 0, 0 };
+    const mouse_coords = Vec2_f32{ 0, 0 };
+    _ = mouse_coords; // autofix
     main_loop: while (!quit) {
         const new_ticks = sdl.SDL_GetTicks();
         const delta_time = @as(f32, @floatFromInt(new_ticks - last_ticks)) / 1000;
         last_ticks = new_ticks;
         var event: sdl.SDL_Event = undefined;
-
         while (sdl.SDL_PollEvent(&event)) {
             // printEvent(event);
             _ = zgui.backend.processEvent(&event);
@@ -579,28 +708,33 @@ pub fn main() !u8 {
                             _ = sdl.SDL_SetWindowMouseGrab(window, mouse_grabbed);
                             _ = sdl.SDL_SetWindowRelativeMouseMode(window, mouse_grabbed);
                         },
-                        sdl.SDLK_W => {},
-                        sdl.SDLK_S => {},
-                        sdl.SDLK_A => {},
-                        sdl.SDLK_D => {},
+                        sdl.SDLK_W => {
+                            camera.moveForward(MOVE_SPEED * delta_time);
+                        },
+                        sdl.SDLK_S => {
+                            camera.moveBackward(MOVE_SPEED * delta_time);
+                        },
+                        sdl.SDLK_A => {
+                            camera.moveLeft(MOVE_SPEED * delta_time);
+                        },
+                        sdl.SDLK_D => {
+                            camera.moveRight(MOVE_SPEED * delta_time);
+                        },
 
                         else => {},
                     }
                 },
 
                 sdl.SDL_EVENT_MOUSE_MOTION => {
-                    const last_mouse_coords = mouse_coords;
-                    mouse_coords = Vec2_f32{ event.motion.x, event.motion.y };
+                    const mouse_motion = Vec2_f32{ event.motion.xrel, event.motion.yrel };
                     if (sdl.SDL_GetWindowMouseGrab(window)) {
-                        if (mouse_coords[0] > last_mouse_coords[0]) {} else if (mouse_coords[0] < last_mouse_coords[0]) {}
-                        if (mouse_coords[1] > last_mouse_coords[1]) {} else if (mouse_coords[1] < last_mouse_coords[1]) {}
+                        camera.rotate(mouse_motion[0], -mouse_motion[1], 0, true);
                     }
                 },
 
                 sdl.SDL_EVENT_WINDOW_RESIZED => {
                     aspect = getAspectRatio(window);
-                    projection_mat = zm.perspectiveFovRh(70.0, aspect, 0.0001, 10000.0); // FIX: Use more reasonable near/far planes
-
+                    camera.resetProjection(aspect);
                 },
 
                 else => {},
@@ -622,11 +756,21 @@ pub fn main() !u8 {
         zgui.setNextWindowPos(.{ .x = 20.0, .y = 20.0, .cond = .first_use_ever });
         zgui.setNextWindowSize(.{ .w = -1.0, .h = -1.0, .cond = .first_use_ever });
         if (zgui.begin("info", .{})) {
-            zgui.text("camera position :{any},{any},{any}", .{
-                camera_position[0],
-                camera_position[1],
-                camera_position[2],
+            zgui.text("camera target :{any},{any},{any}", .{
+                camera.front[0],
+                camera.front[1],
+                camera.front[2],
             });
+
+            zgui.text("camera position :{any},{any},{any}", .{
+                camera.position[0],
+                camera.position[1],
+                camera.position[2],
+            });
+
+            if (zgui.dragFloat("camera x", .{ .v = &camera.position[2] })) {
+                camera.update();
+            }
         }
         zgui.end();
 
@@ -680,13 +824,18 @@ pub fn main() !u8 {
 
         rotation += ROTATION_SPEED * delta_time;
         // Create a model matrix with rotation for better visualization
-        const model_mat = zm.translationV(Vec4_f32{ 0, 0, 0, 0 });
-        const view = zm.lookAtRh(camera_position, camera_target, Vec4_f32{ 0, 1, 0, 0 });
+        const model_mat = zm.mul(
+            zm.mul(
+                zm.rotationX(0),
+                zm.rotationY(rotation),
+            ),
+            zm.translationV(Vec4_f32{ 0, 0, 0, 0 }),
+        );
 
         const ubo: UniformBufferObejct = .{
             .model = model_mat,
-            .view = view,
-            .projection = projection_mat,
+            .view = camera.getViewMatrix(),
+            .projection = camera.getProjectionMatrix(),
         };
 
         // Push uniform data
@@ -705,25 +854,4 @@ pub fn main() !u8 {
     }
 
     return 0;
-}
-
-/// Converts the return value of an SDL function to an error union.
-pub inline fn errify(value: anytype) error{SdlError}!switch (@typeInfo(@TypeOf(value))) {
-    .bool => void,
-    .pointer, .optional => @TypeOf(value.?),
-    .int => |info| switch (info.signedness) {
-        .signed => @TypeOf(@max(0, value)),
-        .unsigned => @TypeOf(value),
-    },
-    else => @compileError("unerrifiable type: " ++ @typeName(@TypeOf(value))),
-} {
-    return switch (@typeInfo(@TypeOf(value))) {
-        .bool => if (!value) error.SdlError,
-        .pointer, .optional => value orelse error.SdlError,
-        .int => |info| switch (info.signedness) {
-            .signed => if (value >= 0) @max(0, value) else error.SdlError,
-            .unsigned => if (value != 0) value else error.SdlError,
-        },
-        else => comptime unreachable,
-    };
 }
