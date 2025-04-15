@@ -52,6 +52,10 @@
             .url = "git+https://github.com/zig-gamedev/zmath.git#ccf7297ef6c01e21b2d51ad81b5b6ce929e86a00",
             .hash = "zmath-0.11.0-dev-wjwivZY1AwDO7yxNmZ5HWoU03f9mFBet8LN9-oYc3i29",
         },
+        .entt = .{
+            .url = "git+https://github.com/prime31/zig-ecs#d0af139e204a420a3dd596c1f2f5e267a7438b9e",
+            .hash = "entt-1.0.0-qJPtbAB1AgDHqBxxDmRYRWqlA9x7rKez5XpebJmDKTOj",
+        },
     },
     .paths = .{
         "build.zig",

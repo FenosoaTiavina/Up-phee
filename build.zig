@@ -27,14 +27,12 @@ pub fn build(builder: *std.Build) !void {
     const zgui = builder.dependency("zgui", .{
         .target = target,
         .backend = .sdl3_gpu,
-        // .with_implot = true,
-        // .with_node_editor = true,
-        // .with_te = true,
     });
-
     exe.root_module.addImport("zgui", zgui.module("root"));
     exe.linkLibrary(zgui.artifact("imgui"));
 
+    const entt = builder.dependency("entt", .{});
+    exe.root_module.addImport("ecs", entt.module("zig-ecs"));
     exe.linkSystemLibrary("sdl3");
 
     exe.addCSourceFiles(.{
