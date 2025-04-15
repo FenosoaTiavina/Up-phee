@@ -294,9 +294,9 @@ pub const Renderer = struct {
         var color_target_info = c.sdl.SDL_GPUColorTargetInfo{
             .texture = swapchain_texture,
             .clear_color = .{
-                .r = 0.10,
-                .g = 0.10,
-                .b = 0.10,
+                .r = 0.28,
+                .g = 0.28,
+                .b = 0.28,
                 .a = 1.0,
             },
             .load_op = c.sdl.SDL_GPU_LOADOP_CLEAR,
@@ -314,11 +314,13 @@ pub const Renderer = struct {
         c.sdl.SDL_BindGPUGraphicsPipeline(render_pass, self.pipeline);
 
         var iter = renderable_entities.entityIterator();
+
         // Render each entity
         while (iter.next()) |entity_id| {
-            std.log.debug("{any}", .{camera_component});
             const transform = renderable_entities.get(components.transform.Transform, entity_id);
             const mesh = renderable_entities.get(components.mesh.MeshData, entity_id);
+
+            std.log.debug("{any}", .{mesh.num_indices});
 
             // Update model matrix if needed
             components.transform.updateModelMatrix(transform);

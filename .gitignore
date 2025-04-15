@@ -2,3 +2,4 @@
 shaders/compiled
 zig-out
 imgui.ini
+assets/shaders/compiled
