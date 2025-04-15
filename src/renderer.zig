@@ -1,7 +1,6 @@
-// renderer.zig
 const std = @import("std");
 const zm = @import("zmath");
-// const zgui = @import("zgui");
+const zgui = @import("zgui");
 const ecs = @import("ecs");
 const T_ = @import("./types.zig");
 const components = @import("components.zig");
@@ -304,7 +303,7 @@ pub const Renderer = struct {
         };
 
         // Begin ImGUI rendering if used
-        // zgui.backend.prepareDrawData(@ptrCast(command_buffer));
+        zgui.backend.prepareDrawData(@ptrCast(command_buffer));
 
         const render_pass = c.sdl.SDL_BeginGPURenderPass(command_buffer, &color_target_info, 1, null) orelse {
             return error.RenderPassCreationFailed;
@@ -353,7 +352,7 @@ pub const Renderer = struct {
         }
 
         // Render ImGUI if used
-        // zgui.backend.renderDrawData(@ptrCast(command_buffer), @ptrCast(render_pass), null);
+        zgui.backend.renderDrawData(@ptrCast(command_buffer), @ptrCast(render_pass), null);
 
         c.sdl.SDL_EndGPURenderPass(render_pass);
         _ = c.sdl.SDL_SubmitGPUCommandBuffer(command_buffer);

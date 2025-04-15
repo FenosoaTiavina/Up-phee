@@ -1,11 +1,13 @@
 // main.zig
 const std = @import("std");
-const zgui = @import("zgui");
+
 const ecs = @import("ecs");
-const components = @import("components.zig");
-const renderer = @import("renderer.zig");
+const zgui = @import("zgui");
 
 const c = @import("imports.zig");
+const components = @import("components.zig");
+const renderer = @import("renderer.zig");
+const T_ = @import("types.zig");
 
 const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
@@ -23,22 +25,22 @@ pub fn main() !void {
     var game_renderer = try renderer.Renderer.init(allocator, WINDOW_WIDTH, WINDOW_HEIGHT, "Pressure Simulation");
     defer game_renderer.deinit();
 
-    // // Initialize zgui
-    // zgui.init(allocator);
-    // defer zgui.deinit();
+    // Initialize zgui
+    zgui.init(allocator);
+    defer zgui.deinit();
     //
-    // zgui.getStyle().setColorsDark();
+    zgui.getStyle().setColorsDark();
 
-    // zgui.backend.init(game_renderer.window.sdl_window, .{
-    //     .device = game_renderer.device.?,
-    //     .color_target_format = c.sdl.SDL_GetGPUSwapchainTextureFormat(game_renderer.device, game_renderer.window.sdl_window),
-    //     .msaa_samples = c.sdl.SDL_GPU_SAMPLECOUNT_1,
-    // });
-    // defer zgui.backend.deinit();
+    zgui.backend.init(game_renderer.window.sdl_window, .{
+        .device = game_renderer.device.?,
+        .color_target_format = c.sdl.SDL_GetGPUSwapchainTextureFormat(game_renderer.device, game_renderer.window.sdl_window),
+        .msaa_samples = c.sdl.SDL_GPU_SAMPLECOUNT_1,
+    });
+    defer zgui.backend.deinit();
 
     // Create a camera entity
     const camera_entity = registry.create();
-    const aspect = game_renderer.getAspectRatio();
+    var aspect = game_renderer.getAspectRatio();
 
     // Add camera component
     registry.add(camera_entity, components.camera.init(.{ 0, 0, -5 }, .{ 0, 0, 0 }, aspect));
@@ -90,8 +92,7 @@ pub fn main() !void {
     _ = ROTATION_SPEED; // autofix
     const MOVE_SPEED = 10;
     _ = MOVE_SPEED; // autofix
-    const mouse_grabbed = false;
-    _ = mouse_grabbed; // autofix
+    var mouse_grabbed = false;
     var last_ticks = c.sdl.SDL_GetTicks();
     var quit = false;
 
@@ -108,17 +109,79 @@ pub fn main() !void {
 
         // Process events
         while (c.sdl.SDL_PollEvent(&event)) {
-            // _ = zgui.backend.processEvent(&event);
-
+            _ = zgui.backend.processEvent(&event);
             switch (event.type) {
-                c.sdl.SDL_EVENT_QUIT => {
+                c.sdl.SDL_EVENT_WINDOW_CLOSE_REQUESTED, c.sdl.SDL_EVENT_QUIT => {
                     quit = true;
                 },
+                c.sdl.SDL_EVENT_KEY_DOWN => {
+                    switch (event.key.key) {
+                        c.sdl.SDLK_Q => {
+                            quit = true;
+                        },
+                        c.sdl.SDLK_G => {
+                            mouse_grabbed = !mouse_grabbed;
+                            _ = c.sdl.SDL_SetWindowMouseGrab(game_renderer.window.sdl_window, mouse_grabbed);
+                            _ = c.sdl.SDL_SetWindowRelativeMouseMode(game_renderer.window.sdl_window, mouse_grabbed);
+                        },
+                        c.sdl.SDLK_W => {},
+                        c.sdl.SDLK_S => {},
+                        c.sdl.SDLK_A => {},
+                        c.sdl.SDLK_D => {},
+
+                        else => {},
+                    }
+                },
+
+                c.sdl.SDL_EVENT_MOUSE_MOTION => {
+                    const mouse_motion = T_.Vec2_f32{ event.motion.xrel, event.motion.yrel };
+                    if (c.sdl.SDL_GetWindowMouseGrab(game_renderer.window.sdl_window)) {
+                        const last_cam = registry.get(components.camera.CameraData, camera_entity);
+                        components.camera.rotate(last_cam, mouse_motion[0], -mouse_motion[1], 0, true);
+                    }
+                },
+
+                c.sdl.SDL_EVENT_WINDOW_RESIZED => {
+                    aspect = game_renderer.getAspectRatio();
+                    components.camera.updateResize(registry.get(components.camera.CameraData, camera_entity), aspect);
+                },
+
                 else => {},
             }
-
-            try game_renderer.render(&registry, camera_entity);
         }
+        var fb_width: c_int = 0;
+        var fb_height: c_int = 0;
+        if (!c.sdl.SDL_GetWindowSize(game_renderer.window.sdl_window, &fb_width, &fb_height)) {
+            std.log.err("SDL_GetWindowSizeInPixels failed: {s}\n", .{c.sdl.SDL_GetError()});
+            return error.SDLGetWindowSize;
+        }
+
+        const fb_scale = c.sdl.SDL_GetWindowDisplayScale(game_renderer.window.sdl_window);
+
+        zgui.backend.newFrame(@intCast(fb_width), @intCast(fb_height), fb_scale);
+
+        // Show a simple window
+        zgui.setNextWindowPos(.{ .x = 20.0, .y = 20.0, .cond = .first_use_ever });
+        zgui.setNextWindowSize(.{ .w = -1.0, .h = -1.0, .cond = .first_use_ever });
+        if (zgui.begin("info", .{})) {
+            zgui.text("camera target :{any},{any},{any}", .{
+                registry.get(components.camera.CameraData, camera_entity).*.front[0],
+                registry.get(components.camera.CameraData, camera_entity).*.front[1],
+                registry.get(components.camera.CameraData, camera_entity).*.front[2],
+            });
+
+            zgui.text("camera position :{any},{any},{any}", .{
+                registry.get(components.camera.CameraData, camera_entity).*.position[0],
+                registry.get(components.camera.CameraData, camera_entity).*.position[1],
+                registry.get(components.camera.CameraData, camera_entity).*.position[2],
+            });
+        }
+        zgui.end();
+
+        // The SDL3+GPU backend requires calling zgui.backend.render() before rendering ImGui
+        zgui.backend.render();
+
+        try game_renderer.render(&registry, camera_entity);
     }
 
     registry.deinit();
