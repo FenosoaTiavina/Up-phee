@@ -71,7 +71,7 @@ const Camera = struct {
             .front = zm.normalize3(tar - pos),
             .right = zm.normalize3(zm.cross3(zm.normalize3(tar - pos), up)),
             .speed = 1,
-            .sensitivity = 0.9,
+            .sensitivity = 0.5,
             .view_matrix = zm.lookAtRh(pos, tar, up),
             .projection_matrix = zm.perspectiveFovRh(
                 std.math.degreesToRadians(45.0), // FOV
