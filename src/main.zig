@@ -7,6 +7,7 @@ const zgui = @import("zgui");
 const c = @import("imports.zig");
 const components = @import("components.zig");
 const renderer = @import("renderer.zig");
+const shader = @import("shader.zig");
 const T_ = @import("types.zig");
 
 const WINDOW_WIDTH = 1200;
@@ -75,13 +76,49 @@ pub fn main() !void {
     const indices = [_]u16{ 0, 1, 2, 2, 3, 0 };
 
     // Create mesh component
-    const mesh = try game_renderer.createMeshComponent(&vertices, &indices);
+    const mesh = try components.mesh.createMeshComponent(&game_renderer, &vertices, &indices);
 
     registry.add(quad_entity, mesh);
 
     // Create texture component
-    const texture = try game_renderer.createTextureComponent("assets/kenney_prototypeTextures/PNG/Purple/texture_10.png");
+    const texture = try components.mesh.createTextureComponent(&game_renderer, "assets/kenney_prototypeTextures/PNG/Purple/texture_10.png");
     registry.add(quad_entity, texture);
+
+    try renderer.createGraphicsPipeline(&game_renderer, .{
+        .vertex_shader = try shader.Shader.loadShader(game_renderer.device.?, "assets/shaders/compiled/PositionColor.vert.spv", c.sdl.SDL_GPU_SHADERSTAGE_VERTEX, 1, 0, 0, 0),
+        .fragment_shader = try shader.Shader.loadShader(game_renderer.device.?, "assets/shaders/compiled/SolidColor.frag.spv", c.sdl.SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 0, 1),
+        .vertex_input_state = .{
+            .vertex_buffer_descriptions = &c.sdl.SDL_GPUVertexBufferDescription{
+                .slot = 0,
+                .pitch = @sizeOf(components.mesh.Vertex),
+                .input_rate = c.sdl.SDL_GPU_VERTEXINPUTRATE_VERTEX,
+                .instance_step_rate = 0,
+            },
+            .num_vertex_buffers = 1,
+            .vertex_attributes = &[_]c.sdl.SDL_GPUVertexAttribute{
+                .{
+                    .location = 0,
+                    .buffer_slot = 0,
+                    .format = c.sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+                    .offset = @offsetOf(components.mesh.Vertex, "position"),
+                },
+                .{
+                    .location = 1,
+                    .buffer_slot = 0,
+                    .format = c.sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+                    .offset = @offsetOf(components.mesh.Vertex, "color"),
+                },
+                .{
+                    .location = 2,
+                    .buffer_slot = 0,
+                    .format = c.sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
+                    .offset = @offsetOf(components.mesh.Vertex, "uv"),
+                },
+            },
+            .num_vertex_attributes = 3,
+        },
+        .wireframe = false,
+    });
 
     // Add transform component
     const transform = components.transform.init();
@@ -149,6 +186,7 @@ pub fn main() !void {
                 else => {},
             }
         }
+
         var fb_width: c_int = 0;
         var fb_height: c_int = 0;
         if (!c.sdl.SDL_GetWindowSize(game_renderer.window.sdl_window, &fb_width, &fb_height)) {
@@ -179,9 +217,11 @@ pub fn main() !void {
         zgui.end();
 
         // The SDL3+GPU backend requires calling zgui.backend.render() before rendering ImGui
-        zgui.backend.render();
 
+        zgui.backend.render();
+        try game_renderer.beginFrame();
         try game_renderer.render(&registry, camera_entity);
+        try game_renderer.endFrame();
     }
 
     registry.deinit();
