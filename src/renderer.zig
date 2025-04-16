@@ -149,8 +149,6 @@ pub const Renderer = struct {
             const pipeline = entry.value_ptr.*;
             c.sdl.SDL_BindGPUGraphicsPipeline(self.render_pass, pipeline);
         }
-
-        zgui.backend.renderDrawData(@ptrCast(command_buffer), @ptrCast(render_pass), null);
     }
 
     pub fn render(self: *Renderer, registry: *ecs.Registry, active_camera_entity: ecs.Entity) !void {
@@ -178,6 +176,16 @@ pub const Renderer = struct {
                 c.sdl.SDL_BindGPUGraphicsPipeline(self.render_pass, self.pipelines.get(pipeline_comp.*.handle));
             }
 
+            if (registry.has(components.mesh.TextureData, entity)) {
+                const texture_comp: components.mesh.TextureData = renderable_entities.get(components.mesh.TextureData, entity).*;
+                c.sdl.SDL_BindGPUFragmentSamplers(
+                    self.render_pass,
+                    0,
+                    &(c.sdl.SDL_GPUTextureSamplerBinding{ .texture = texture_comp.texture, .sampler = texture_comp.sampler }),
+                    1,
+                );
+            }
+
             components.mesh.updateAndRender(
                 cmd,
                 self.render_pass.?,
@@ -186,6 +194,8 @@ pub const Renderer = struct {
                 camera_component,
             );
         }
+
+        zgui.backend.renderDrawData(cmd, self.render_pass.?, null);
     }
 
     pub fn endFrame(self: *Renderer) !void {
