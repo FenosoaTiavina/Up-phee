@@ -6,8 +6,8 @@ const zgui = @import("zgui");
 
 const c = @import("imports.zig");
 const components = @import("components.zig");
-const renderer = @import("renderer.zig");
-const shader = @import("shader.zig");
+const renderer = @import("engine/renderer.zig");
+const shader = @import("engine/shader.zig");
 const T_ = @import("types.zig");
 
 const WINDOW_WIDTH = 1200;
@@ -23,7 +23,7 @@ pub fn main() !void {
     var registry = ecs.Registry.init(allocator);
 
     // Initialize the renderer
-    var game_renderer = try renderer.Renderer.init(allocator, WINDOW_WIDTH, WINDOW_HEIGHT, "Pressure Simulation");
+    var game_renderer = try renderer.Renderer.init(allocator, WINDOW_WIDTH, WINDOW_HEIGHT, "HEHE");
     defer game_renderer.deinit();
 
     // Initialize zgui
