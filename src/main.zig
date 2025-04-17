@@ -37,6 +37,7 @@ pub fn main() !void {
         .color_target_format = c.sdl.SDL_GetGPUSwapchainTextureFormat(game_renderer.device, game_renderer.window.sdl_window),
         .msaa_samples = c.sdl.SDL_GPU_SAMPLECOUNT_1,
     });
+
     defer zgui.backend.deinit();
 
     // Create a camera entity
@@ -127,26 +128,26 @@ pub fn main() !void {
     // Game loop variables
     const ROTATION_SPEED = std.math.degreesToRadians(10); // in radians
     _ = ROTATION_SPEED; // autofix
-    const MOVE_SPEED = 10;
-    _ = MOVE_SPEED; // autofix
     var mouse_grabbed = false;
     var last_ticks = c.sdl.SDL_GetTicks();
     var quit = false;
 
+    const cam = registry.get(components.camera.CameraData, camera_entity);
     // Main game loop
     while (!quit) {
         const new_ticks = c.sdl.SDL_GetTicks();
         const delta_time = @as(f32, @floatFromInt(new_ticks - last_ticks)) / 1000;
-        _ = delta_time; // autofix
         last_ticks = new_ticks;
 
         var event: c.sdl.SDL_Event = undefined;
-        const move_vec = [3]f32{ 0, 0, 0 };
+        const move_vec: T_.Vec3_f32 = .{ 0, 0, 0 };
         _ = move_vec; // autofix
 
         // Process events
         while (c.sdl.SDL_PollEvent(&event)) {
             _ = zgui.backend.processEvent(&event);
+
+            components.camera.handleCameraInput(cam, delta_time);
             switch (event.type) {
                 c.sdl.SDL_EVENT_WINDOW_CLOSE_REQUESTED, c.sdl.SDL_EVENT_QUIT => {
                     quit = true;
@@ -161,11 +162,6 @@ pub fn main() !void {
                             _ = c.sdl.SDL_SetWindowMouseGrab(game_renderer.window.sdl_window, mouse_grabbed);
                             _ = c.sdl.SDL_SetWindowRelativeMouseMode(game_renderer.window.sdl_window, mouse_grabbed);
                         },
-                        c.sdl.SDLK_W => {},
-                        c.sdl.SDLK_S => {},
-                        c.sdl.SDLK_A => {},
-                        c.sdl.SDLK_D => {},
-
                         else => {},
                     }
                 },
@@ -207,12 +203,22 @@ pub fn main() !void {
                 registry.get(components.camera.CameraData, camera_entity).*.front[1],
                 registry.get(components.camera.CameraData, camera_entity).*.front[2],
             });
+            zgui.text("camera front :{any},{any},{any}", .{
+                registry.get(components.camera.CameraData, camera_entity).*.front[0],
+                registry.get(components.camera.CameraData, camera_entity).*.front[1],
+                registry.get(components.camera.CameraData, camera_entity).*.front[2],
+            });
 
             zgui.text("camera position :{any},{any},{any}", .{
                 registry.get(components.camera.CameraData, camera_entity).*.position[0],
                 registry.get(components.camera.CameraData, camera_entity).*.position[1],
                 registry.get(components.camera.CameraData, camera_entity).*.position[2],
             });
+
+            if (zgui.button("reset Cam", .{})) {
+                cam.*.position = .{ 0, 0, -5, 0 };
+                components.camera.update(cam);
+            }
         }
         zgui.end();
 

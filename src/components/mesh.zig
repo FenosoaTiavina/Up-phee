@@ -109,10 +109,6 @@ pub fn createTextureComponent(renderer: *rd.Renderer, texture_path: []const u8) 
     };
 }
 
-pub fn update(transform: *components.transform.Transform) void {
-    components.transform.updateModelMatrix(transform);
-}
-
 pub fn updateAndRender(
     command_buffer: *c.sdl.SDL_GPUCommandBuffer,
     render_pass: *c.sdl.SDL_GPURenderPass,
@@ -120,7 +116,7 @@ pub fn updateAndRender(
     mesh: *MeshData,
     camera_component: *components.camera.CameraData,
 ) void {
-    update(transform);
+    components.transform.updateModelMatrix(transform);
     // Bind vertex and index buffers
     const vert_buffer_binding = c.sdl.SDL_GPUBufferBinding{
         .buffer = mesh.vertex_buffer,
@@ -129,7 +125,6 @@ pub fn updateAndRender(
     c.sdl.SDL_BindGPUVertexBuffers(render_pass, 0, &vert_buffer_binding, 1);
     c.sdl.SDL_BindGPUIndexBuffer(render_pass, &.{ .buffer = mesh.index_buffer, .offset = 0 }, c.sdl.SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
-    // Push uniform data (model-view-projection)
     const ubo = components.render.UniformBufferObject{
         .model = transform.model_matrix,
         .view = camera_component.view_matrix,

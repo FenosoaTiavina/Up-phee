@@ -1,4 +1,6 @@
 const std = @import("std");
+const c = @import("../imports.zig");
+
 const zm = @import("zmath");
 
 const T_ = @import("../types.zig");
@@ -76,11 +78,18 @@ pub fn updateResize(camera: *CameraData, aspect: f32) void {
 }
 
 pub fn move(camera: *CameraData, vec_move_amount: T_.Vec3_f32) void {
-    const direction = zm.normalize3(camera.front - camera.position);
-    const movement = direction * zm.splat(T_.Vec4_f32, camera.speed) * T_.Vec4_f32{ vec_move_amount[0], vec_move_amount[1], vec_move_amount[2], 1.0 };
+    // Create movement vectors based on camera's local coordinate system
+    const rightMovement = camera.right * zm.splat(T_.Vec4_f32, vec_move_amount[0]);
+    const upMovement = camera.up * zm.splat(T_.Vec4_f32, vec_move_amount[1]);
+    const frontMovement = camera.front * zm.splat(T_.Vec4_f32, vec_move_amount[2]);
 
+    // Combine movements in all directions
+    const movement = rightMovement + upMovement + frontMovement;
+
+    // Update position
     camera.position = camera.position + movement;
-    camera.front = camera.front + movement;
+
+    // Update view matrix
     update(camera);
 }
 
@@ -100,4 +109,42 @@ pub fn rotate(camera: *CameraData, x: f32, y: f32, z: f32, constraint_picth: boo
             camera.*.pitch = -89.0;
     }
     update(camera);
+}
+
+pub fn handleCameraInput(camera: *CameraData, delta_time: f32) void {
+    const keyboard_state = c.sdl.SDL_GetKeyboardState(null);
+
+    // Initialize movement vector to zero
+    var movement = T_.Vec3_f32{ 0.0, 0.0, 0.0 };
+
+    // Add movement components based on key presses
+    if (keyboard_state[c.sdl.SDL_SCANCODE_W]) movement[2] += 1.0;
+    if (keyboard_state[c.sdl.SDL_SCANCODE_S]) movement[2] -= 1.0;
+    if (keyboard_state[c.sdl.SDL_SCANCODE_D]) movement[0] += 1.0;
+    if (keyboard_state[c.sdl.SDL_SCANCODE_A]) movement[0] -= 1.0;
+    if (keyboard_state[c.sdl.SDL_SCANCODE_SPACE]) movement[1] += 1.0;
+    if (keyboard_state[c.sdl.SDL_SCANCODE_LSHIFT]) movement[1] -= 1.0;
+
+    // Only proceed if there's any movement
+    if (movement[0] != 0.0 or movement[1] != 0.0 or movement[2] != 0.0) {
+        // Calculate length of the movement vector
+        const length_squared = movement[0] * movement[0] +
+            movement[1] * movement[1] +
+            movement[2] * movement[2];
+        // Normalize only if length is not 1 (diagonal movement)
+        if (length_squared > 1.0001) {
+            const length = @sqrt(length_squared);
+            movement[0] /= length;
+            movement[1] /= length;
+            movement[2] /= length;
+        }
+        // Scale movement by delta time and speed
+        const scaled_movement = T_.Vec3_f32{
+            movement[0] * delta_time * camera.speed,
+            movement[1] * delta_time * camera.speed,
+            movement[2] * delta_time * camera.speed,
+        };
+        // Apply movement to camera
+        move(camera, scaled_movement);
+    }
 }
