@@ -3,7 +3,7 @@ const std = @import("std");
 const T_ = @import("../types.zig");
 
 const c = @import("../imports.zig");
-const rd = @import("../renderer.zig");
+const rd = @import("../engine/renderer.zig");
 
 const components = @import("../components.zig");
 
