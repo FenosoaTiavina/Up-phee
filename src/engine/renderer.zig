@@ -144,8 +144,6 @@ pub const Renderer = struct {
 
         var it = self.pipelines.iterator();
         while (it.next()) |entry| {
-            std.log.debug("bind: {}", .{entry.key_ptr.*});
-
             const pipeline = entry.value_ptr.*;
             c.sdl.SDL_BindGPUGraphicsPipeline(self.render_pass, pipeline);
         }

@@ -116,7 +116,6 @@ pub fn handleCameraInput(camera: *CameraData, delta_time: f32) void {
 
     // Initialize movement vector to zero
     var movement = T_.Vec3_f32{ 0.0, 0.0, 0.0 };
-
     // Add movement components based on key presses
     if (keyboard_state[c.sdl.SDL_SCANCODE_W]) movement[2] += 1.0;
     if (keyboard_state[c.sdl.SDL_SCANCODE_S]) movement[2] -= 1.0;

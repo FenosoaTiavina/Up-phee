@@ -8,6 +8,8 @@ const c = @import("imports.zig");
 const components = @import("components.zig");
 const renderer = @import("engine/renderer.zig");
 const shader = @import("engine/shader.zig");
+const event = @import("./engine/event/imports.zig");
+
 const T_ = @import("types.zig");
 
 const WINDOW_WIDTH = 1200;
@@ -26,6 +28,12 @@ pub fn main() !void {
     var game_renderer = try renderer.Renderer.init(allocator, WINDOW_WIDTH, WINDOW_HEIGHT, "HEHE");
     defer game_renderer.deinit();
 
+    var event_manager = try event.manager.EventManager.init(allocator);
+    defer event_manager.deinit();
+
+    var input_manager = try event.input.InputSystem.init(&event_manager);
+    defer input_manager.deinit();
+
     // Initialize zgui
     zgui.init(allocator);
     defer zgui.deinit();
@@ -42,7 +50,7 @@ pub fn main() !void {
 
     // Create a camera entity
     const camera_entity = registry.create();
-    var aspect = game_renderer.getAspectRatio();
+    const aspect = game_renderer.getAspectRatio();
 
     // Add camera component
     registry.add(camera_entity, components.camera.init(.{ 0, 0, -5 }, .{ 0, 0, 0 }, aspect));
@@ -126,62 +134,24 @@ pub fn main() !void {
     registry.add(quad_entity, transform);
 
     // Game loop variables
-    const ROTATION_SPEED = std.math.degreesToRadians(10); // in radians
-    _ = ROTATION_SPEED; // autofix
     var mouse_grabbed = false;
+    _ = &mouse_grabbed; // autofix
     var last_ticks = c.sdl.SDL_GetTicks();
     var quit = false;
+    _ = &quit;
 
     const cam = registry.get(components.camera.CameraData, camera_entity);
+
     // Main game loop
     while (!quit) {
         const new_ticks = c.sdl.SDL_GetTicks();
         const delta_time = @as(f32, @floatFromInt(new_ticks - last_ticks)) / 1000;
+        _ = delta_time; // autofix
         last_ticks = new_ticks;
-
-        var event: c.sdl.SDL_Event = undefined;
         const move_vec: T_.Vec3_f32 = .{ 0, 0, 0 };
         _ = move_vec; // autofix
 
-        // Process events
-        while (c.sdl.SDL_PollEvent(&event)) {
-            _ = zgui.backend.processEvent(&event);
-
-            components.camera.handleCameraInput(cam, delta_time);
-            switch (event.type) {
-                c.sdl.SDL_EVENT_WINDOW_CLOSE_REQUESTED, c.sdl.SDL_EVENT_QUIT => {
-                    quit = true;
-                },
-                c.sdl.SDL_EVENT_KEY_DOWN => {
-                    switch (event.key.key) {
-                        c.sdl.SDLK_Q => {
-                            quit = true;
-                        },
-                        c.sdl.SDLK_G => {
-                            mouse_grabbed = !mouse_grabbed;
-                            _ = c.sdl.SDL_SetWindowMouseGrab(game_renderer.window.sdl_window, mouse_grabbed);
-                            _ = c.sdl.SDL_SetWindowRelativeMouseMode(game_renderer.window.sdl_window, mouse_grabbed);
-                        },
-                        else => {},
-                    }
-                },
-
-                c.sdl.SDL_EVENT_MOUSE_MOTION => {
-                    const mouse_motion = T_.Vec2_f32{ event.motion.xrel, event.motion.yrel };
-                    if (c.sdl.SDL_GetWindowMouseGrab(game_renderer.window.sdl_window)) {
-                        const last_cam = registry.get(components.camera.CameraData, camera_entity);
-                        components.camera.rotate(last_cam, mouse_motion[0], -mouse_motion[1], 0, true);
-                    }
-                },
-
-                c.sdl.SDL_EVENT_WINDOW_RESIZED => {
-                    aspect = game_renderer.getAspectRatio();
-                    components.camera.updateResize(registry.get(components.camera.CameraData, camera_entity), aspect);
-                },
-
-                else => {},
-            }
-        }
+        quit = try input_manager.pollSDL();
 
         var fb_width: c_int = 0;
         var fb_height: c_int = 0;
