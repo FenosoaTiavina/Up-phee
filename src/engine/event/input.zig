@@ -47,13 +47,6 @@ pub const InputSystem = struct {
     pressed: std.StringHashMap(EventSystem.PressData),
 
     pub fn serializedPressed(self: *InputSystem, bitfield: KeyBitfield) ![]u8 {
-        // First pass: collect modifier keys
-        var has_modifiers = false;
-        var out = std.ArrayList(u8).init(self.event_manager.allocator);
-        defer out.deinit();
-
-        // Process modifiers in specific order
-        // This ensures modifiers always appear in the same order regardless of key enum order
         const modifiers = [_]Keys{
             .Key_LCTRL,             .Key_RCTRL,
             .Key_LSHIFT,            .Key_RSHIFT,
@@ -66,54 +59,39 @@ pub const InputSystem = struct {
             .Key_MULTI_KEY_COMPOSE,
         };
 
-        // Process modifiers first
-        for (modifiers) |mod_key| {
-            if (bitfield.isBitSet(mod_key)) {
-                if (has_modifiers) {
-                    _ = try out.writer().write(" + ");
-                }
+        var out = std.ArrayList(u8).init(self.event_manager.allocator);
+        defer out.deinit(); // Will clean up the list automatically
+        var needs_separator = false;
 
-                const key_name = mod_key.getName();
-                _ = try out.writer().write(key_name);
-                has_modifiers = true;
+        // Process modifiers first
+        for (modifiers) |key| {
+            if (bitfield.isBitSet(key)) {
+                if (needs_separator) try out.appendSlice(" + ");
+                try out.appendSlice(key.getName());
+                needs_separator = true;
             }
         }
 
-        // Second pass: collect regular keys
-        var reg_key_count: u8 = 0;
-        var key_value: usize = 0;
-
-        // Maximum number of keys to check (adjust based on your enum)
-        const max_keys = 256;
-
-        while (key_value < max_keys) : (key_value += 1) {
-            // Skip the key if it's a modifier
+        // Process regular keys
+        var key_value: u8 = 0;
+        while (key_value < 255) : (key_value += 1) {
             const key = @as(Keys, @enumFromInt(key_value));
 
-            // Skip the key if it's a modifier (already processed)
-            var is_modifier = false;
-            for (modifiers) |mod_key| {
-                if (key == mod_key) {
-                    is_modifier = true;
-                    break;
-                }
-            }
-
+            // Skip modifiers
+            const is_modifier = for (modifiers) |mod| {
+                if (key == mod) break true;
+            } else false;
             if (is_modifier) continue;
 
-            // Check if key is pressed
             if (bitfield.isBitSet(key)) {
-                if (has_modifiers or reg_key_count > 0) {
-                    _ = try out.writer().write(" + ");
-                }
-
-                const key_name = key.getName();
-                _ = try out.writer().write(key_name);
-                has_modifiers = true;
-                reg_key_count += 1;
+                if (needs_separator) try out.appendSlice(" + ");
+                try out.appendSlice(key.getName());
+                needs_separator = true;
             }
         }
-        return out.items;
+
+        // Copy the contents to a new owned slice
+        return try self.event_manager.allocator.dupe(u8, out.items);
     }
 
     pub fn init(event_manager: *EventSystem.EventManager) !InputSystem {
@@ -168,6 +146,7 @@ pub const InputSystem = struct {
                     if (sdl_event.type == c.sdl.SDL_EVENT_KEY_UP and is_key_pressed) {
                         const bitfield = KeyBitfield.fromHashMap(self.pressed);
                         const keydebug = try self.serializedPressed(bitfield);
+                        defer self.event_manager.allocator.free(keydebug);
                         std.log.debug("{s}", .{keydebug});
                         _ = self.pressed.remove(key_name);
                     }
