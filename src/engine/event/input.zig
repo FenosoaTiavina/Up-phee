@@ -46,54 +46,6 @@ pub const InputSystem = struct {
     event_manager: *EventSystem.EventManager,
     pressed: std.StringHashMap(EventSystem.PressData),
 
-    pub fn serializedPressed(self: *InputSystem, bitfield: KeyBitfield) ![]u8 {
-        const modifiers = [_]Keys{
-            .Key_LCTRL,             .Key_RCTRL,
-            .Key_LSHIFT,            .Key_RSHIFT,
-            .Key_LALT,              .Key_RALT,
-            .Key_LGUI,              .Key_RGUI,
-            .Key_LMETA,             .Key_RMETA,
-            .Key_LHYPER,            .Key_RHYPER,
-            .Key_CAPSLOCK,          .Key_NUMLOCKCLEAR,
-            .Key_SCROLLLOCK,        .Key_LEVEL5_SHIFT,
-            .Key_MULTI_KEY_COMPOSE,
-        };
-
-        var out = std.ArrayList(u8).init(self.event_manager.allocator);
-        defer out.deinit(); // Will clean up the list automatically
-        var needs_separator = false;
-
-        // Process modifiers first
-        for (modifiers) |key| {
-            if (bitfield.isBitSet(key)) {
-                if (needs_separator) try out.appendSlice(" + ");
-                try out.appendSlice(key.getName());
-                needs_separator = true;
-            }
-        }
-
-        // Process regular keys
-        var key_value: u8 = 0;
-        while (key_value < 255) : (key_value += 1) {
-            const key = @as(Keys, @enumFromInt(key_value));
-
-            // Skip modifiers
-            const is_modifier = for (modifiers) |mod| {
-                if (key == mod) break true;
-            } else false;
-            if (is_modifier) continue;
-
-            if (bitfield.isBitSet(key)) {
-                if (needs_separator) try out.appendSlice(" + ");
-                try out.appendSlice(key.getName());
-                needs_separator = true;
-            }
-        }
-
-        // Copy the contents to a new owned slice
-        return try self.event_manager.allocator.dupe(u8, out.items);
-    }
-
     pub fn init(event_manager: *EventSystem.EventManager) !InputSystem {
         return InputSystem{
             .event_manager = event_manager,
@@ -110,13 +62,6 @@ pub const InputSystem = struct {
         while (c.sdl.SDL_PollEvent(&sdl_event)) {
             switch (sdl_event.type) {
                 c.sdl.SDL_EVENT_QUIT => {
-                    const ev = EventSystem.createEvent("quit", .{
-                        .System = .{
-                            .id_event = @intFromEnum(EventSystem.EventID.Quit),
-                            .event = .Quit,
-                        },
-                    });
-                    _ = ev; // autofix
                     return true;
                 },
                 c.sdl.SDL_EVENT_KEY_DOWN, c.sdl.SDL_EVENT_KEY_UP => {
@@ -144,10 +89,14 @@ pub const InputSystem = struct {
                         }
                     }
                     if (sdl_event.type == c.sdl.SDL_EVENT_KEY_UP and is_key_pressed) {
-                        const bitfield = KeyBitfield.fromHashMap(self.pressed);
-                        const keydebug = try self.serializedPressed(bitfield);
-                        defer self.event_manager.allocator.free(keydebug);
-                        std.log.debug("{s}", .{keydebug});
+                        const event_name = try serializedKeyPress(self.event_manager, KeyBitfield.fromHashMap(self.pressed));
+                        defer self.event_manager.allocator.free(event_name);
+
+                        std.log.debug("{s}", .{event_name});
+                        const event = EventSystem.createEvent(event_name, .{ .Keys = .{
+                            .key = try self.pressed.clone(),
+                        } }, .Sent);
+                        self.*.event_manager.register(event);
                         _ = self.pressed.remove(key_name);
                     }
                 },
@@ -158,3 +107,51 @@ pub const InputSystem = struct {
         return false;
     }
 };
+
+pub fn serializedKeyPress(allocator: *EventSystem.EventManager, bitfield: KeyBitfield) ![]u8 {
+    const modifiers = [_]Keys{
+        .Key_LCTRL,             .Key_RCTRL,
+        .Key_LSHIFT,            .Key_RSHIFT,
+        .Key_LALT,              .Key_RALT,
+        .Key_LGUI,              .Key_RGUI,
+        .Key_LMETA,             .Key_RMETA,
+        .Key_LHYPER,            .Key_RHYPER,
+        .Key_CAPSLOCK,          .Key_NUMLOCKCLEAR,
+        .Key_SCROLLLOCK,        .Key_LEVEL5_SHIFT,
+        .Key_MULTI_KEY_COMPOSE,
+    };
+
+    var out = std.ArrayList(u8).init(allocator.allocator);
+    defer out.deinit(); // Will clean up the list automatically
+    var needs_separator = false;
+
+    // Process modifiers first
+    for (modifiers) |key| {
+        if (bitfield.isBitSet(key)) {
+            if (needs_separator) try out.appendSlice(" + ");
+            try out.appendSlice(key.getName());
+            needs_separator = true;
+        }
+    }
+
+    // Process regular keys
+    var key_value: u8 = 0;
+    while (key_value < 255) : (key_value += 1) {
+        const key = @as(Keys, @enumFromInt(key_value));
+
+        // Skip modifiers
+        const is_modifier = for (modifiers) |mod| {
+            if (key == mod) break true;
+        } else false;
+        if (is_modifier) continue;
+
+        if (bitfield.isBitSet(key)) {
+            if (needs_separator) try out.appendSlice(" + ");
+            try out.appendSlice(key.getName());
+            needs_separator = true;
+        }
+    }
+
+    // Copy the contents to a new owned slice
+    return try allocator.allocator.dupe(u8, out.items);
+}

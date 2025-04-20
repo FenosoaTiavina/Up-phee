@@ -15,6 +15,26 @@ const T_ = @import("types.zig");
 const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
 
+fn on_move_key(event_manager: *event.manager.EventManager, event_received: *event.manager.Event, ctx: *anyopaque) bool {
+    const cam: *components.camera.CameraData = @ptrCast(@alignCast(ctx));
+    _ = cam; // autofix
+
+    const key_pressed = event.input.serializedKeyPress(
+        event_manager,
+        event.input.KeyBitfield.fromHashMap(event_received.*.data.Keys.?.key),
+    ) catch |err| {
+        std.debug.print("Error: {}\n", .{err});
+        return false; // or fallback behavior
+    };
+    defer event_manager.allocator.free(key_pressed);
+
+    std.log.debug(
+        "move {s}",
+        .{key_pressed},
+    );
+
+    return true;
+}
 pub fn main() !void {
     // Create an allocator
     var gpa_state = std.heap.GeneralPurposeAllocator(.{}){};
@@ -141,7 +161,9 @@ pub fn main() !void {
     _ = &quit;
 
     const cam = registry.get(components.camera.CameraData, camera_entity);
+    const callback = event.manager.EventCallback.init(cam, on_move_key);
 
+    try event_manager.subscribe(&.{.Key_W}, .Immediate, callback);
     // Main game loop
     while (!quit) {
         const new_ticks = c.sdl.SDL_GetTicks();
