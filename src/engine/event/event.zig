@@ -1,4 +1,5 @@
 const std = @import("std");
+const Keys = @import("keys.zig").Keys;
 
 const Allocator = std.mem.Allocator;
 
@@ -12,7 +13,7 @@ pub const EventID = enum(u32) {
 };
 
 pub const PressData = struct {
-    key_code: u32,
+    key_code: Keys,
     duration: u32,
     timestamp: u64,
 };
