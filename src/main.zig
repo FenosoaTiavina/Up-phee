@@ -8,33 +8,19 @@ const c = @import("imports.zig");
 const components = @import("components.zig");
 const renderer = @import("engine/renderer.zig");
 const shader = @import("engine/shader.zig");
-const event = @import("./engine/event/imports.zig");
+
+const EventSystem = @import("engine/event/event.zig");
+const Keys = @import("engine/event/keys.zig").Keys;
+const KeyBitfield = @import("engine/event/keybitfield.zig").KeyBitfield;
+const InputSystem = @import("engine/event/input.zig").InputSystem;
 
 const T_ = @import("types.zig");
 
 const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
 
-fn on_move_key(event_manager: *event.manager.EventManager, event_received: *event.manager.Event, ctx: *anyopaque) bool {
-    const cam: *components.camera.CameraData = @ptrCast(@alignCast(ctx));
-    _ = cam; // autofix
+fn test() !void {}
 
-    const key_pressed = event.input.serializedKeyPress(
-        event_manager,
-        event.input.KeyBitfield.fromHashMap(event_received.*.data.Keys.?.key),
-    ) catch |err| {
-        std.debug.print("Error: {}\n", .{err});
-        return false; // or fallback behavior
-    };
-    defer event_manager.allocator.free(key_pressed);
-
-    std.log.debug(
-        "move {s}",
-        .{key_pressed},
-    );
-
-    return true;
-}
 pub fn main() !void {
     // Create an allocator
     var gpa_state = std.heap.GeneralPurposeAllocator(.{}){};
@@ -44,7 +30,6 @@ pub fn main() !void {
     // Initialize the ECS registry
     var registry = ecs.Registry.init(allocator);
 
-    // Initialize the renderer
     var game_renderer = try renderer.Renderer.init(allocator, WINDOW_WIDTH, WINDOW_HEIGHT, "HEHE");
     defer game_renderer.deinit();
 
@@ -68,6 +53,7 @@ pub fn main() !void {
 
     defer zgui.backend.deinit();
 
+    // Initialize the renderer
     // Create a camera entity
     const camera_entity = registry.create();
     const aspect = game_renderer.getAspectRatio();
@@ -161,19 +147,34 @@ pub fn main() !void {
     _ = &quit;
 
     const cam = registry.get(components.camera.CameraData, camera_entity);
-    const callback = event.manager.EventCallback.init(cam, on_move_key);
+    var delta_time: f32 = 0;
+    var event_manager = try EventSystem.EventManager.init(allocator, &delta_time);
+    defer event_manager.deinit();
 
-    try event_manager.subscribe(&.{.Key_W}, .Immediate, callback);
+    var input_manager = InputSystem.init(allocator, &event_manager);
+    defer input_manager.deinit();
+
+    event_manager.subscribe(
+        EventSystem.EventMap.create(
+            null,
+            false,
+            null,
+            null,
+            null,
+        ),
+        EventSystem.EventCallback.init(
+            cam,
+            null,
+        ),
+    );
+
     // Main game loop
     while (!quit) {
         const new_ticks = c.sdl.SDL_GetTicks();
-        const delta_time = @as(f32, @floatFromInt(new_ticks - last_ticks)) / 1000;
-        _ = delta_time; // autofix
+        delta_time = @as(f32, @floatFromInt(new_ticks - last_ticks)) / 1000;
         last_ticks = new_ticks;
-        const move_vec: T_.Vec3_f32 = .{ 0, 0, 0 };
-        _ = move_vec; // autofix
 
-        quit = try input_manager.pollSDL();
+        quit = try input_manager.pollEvents();
 
         var fb_width: c_int = 0;
         var fb_height: c_int = 0;
