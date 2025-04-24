@@ -162,13 +162,15 @@ pub fn main() !void {
             &[_]EventSystem.KeyEvent.Key{
                 .{ .code = .Key_W, .pressed = true },
                 .{ .code = .Key_S, .pressed = true },
+                .{ .code = .Key_A, .pressed = true },
+                .{ .code = .Key_D, .pressed = true },
             },
             null,
             null,
             null,
             null,
         ),
-        false,
+        true,
         EventSystem.EventCallback.init(
             cam,
             on_move_key,

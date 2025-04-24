@@ -1,7 +1,8 @@
 const std = @import("std");
-const keys = @import("keys.zig");
 const crypto = std.crypto;
+
 const sort = @import("../../utils/quicksort.zig");
+const keys = @import("keys.zig");
 
 const APPROX_TOLERANCE = 2;
 // Defines how key subscriptions should be processed
@@ -18,29 +19,6 @@ pub const KeyEvent = struct {
         pressed: bool = true,
     };
 };
-
-fn keys_less_than(lhs: KeyEvent.Key, rhs: KeyEvent.Key) bool {
-    if (lhs.pressed == false) return false;
-    return @intFromEnum(lhs.code) < @intFromEnum(rhs.code);
-}
-
-fn sortButtons(buttons: []MouseEvent.Button) void {
-    if (buttons.len <= 1) return;
-
-    var swapped = true;
-    while (swapped) {
-        swapped = false;
-        for (0..buttons.len - 1) |i| {
-            if (buttons[i].button > buttons[i + 1].button) {
-                // Simple swap without dereferencing
-                const temp = buttons[i];
-                buttons[i] = buttons[i + 1];
-                buttons[i + 1] = temp;
-                swapped = true;
-            }
-        }
-    }
-}
 
 pub const MouseEvent = struct {
     id_event: u32,
@@ -187,7 +165,38 @@ pub const EventMap = struct {
         return buffer.toOwnedSlice();
     }
 
-    pub fn check_seq(lhs: EventMap, rhs: EventMap, allocator: std.mem.Allocator) !bool {
+    /// lhs: subscribed
+    /// rhs: received
+    pub fn check_any(lhs: EventMap, rhs: EventMap, allocator: std.mem.Allocator) !bool {
+        if (lhs.keys == null or rhs.keys == null) {
+            return false;
+        }
+
+        // 0. get only pressed lhs
+        var pressed_keys: std.ArrayList(KeyEvent.Key) = std.ArrayList(KeyEvent.Key).init(allocator);
+        defer pressed_keys.deinit();
+
+        for (rhs.keys.?) |value| {
+            if (value.pressed) {
+                try pressed_keys.append(value);
+            }
+        }
+
+        // 3. check
+        var ok: bool = false;
+        for (lhs.keys.?) |lk| {
+            for (pressed_keys.items) |rk| {
+                if (rk.code == lk.code) {
+                    ok = true;
+                }
+            }
+        }
+        return ok;
+    }
+
+    /// lhs: subscribed
+    /// rhs: received
+    pub fn check_combo(lhs: EventMap, rhs: EventMap, allocator: std.mem.Allocator) !bool {
         if (lhs.keys == null or rhs.keys == null) {
             return false;
         }
@@ -206,23 +215,20 @@ pub const EventMap = struct {
         if (pressed_keys.items.len != lhs.keys.?.len) {
             return false;
         }
-        // 2. sort
-        sort.quicksort(KeyEvent.Key, pressed_keys.items, pressed_keys.items.len, pressed_keys.items.len - 1, keys_less_than);
-        sort.quicksort(KeyEvent.Key, lhs.keys.?, lhs.keys.?.len, lhs.keys.?.len - 1, keys_less_than);
-
-        std.log.debug("pressed        {any}", .{pressed_keys.items});
-        std.log.debug("subscribed     {any}", .{lhs.keys.?});
 
         // 3. check
-        //
+
         return true;
     }
 
+    /// lhs: subscribed
+    /// rhs: received
     pub fn check(lhs: EventMap, rhs: EventMap, individual_keys: bool, allocator: std.mem.Allocator) !bool {
         if (!individual_keys) {
-            return try check_seq(lhs, rhs, allocator);
+            return try check_combo(lhs, rhs, allocator);
         }
-        return false;
+
+        return try check_any(lhs, rhs, allocator);
     }
 };
 
