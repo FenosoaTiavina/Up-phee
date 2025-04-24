@@ -28,10 +28,10 @@ pub const MouseEvent = struct {
     pollig: EventPollingContext = .None,
 
     pub const Motion = struct {
-        x: u32,
-        y: u32,
-        x_rel: u32,
-        y_rel: u32,
+        x: f32 = 0,
+        y: f32 = 0,
+        x_rel: f32 = 0,
+        y_rel: f32 = 0,
     };
 
     pub const Button = struct {
@@ -46,9 +46,9 @@ pub const MouseEvent = struct {
     };
 
     pub const Scroll = struct {
-        x_scroll: i32,
-        y_scroll: i32,
-        timestamp: u64,
+        x_scroll: i32 = 0,
+        y_scroll: i32 = 0,
+        timestamp: u64 = 0,
     };
 };
 
@@ -74,49 +74,38 @@ pub const EventData = struct {
 pub const Event = struct { name: []u8, data: EventData };
 
 pub const EventMap = struct {
-    keys: ?[]KeyEvent.Key = null,
+    keys: std.ArrayList(KeyEvent.Key),
     mouse_button: ?[]MouseEvent.Button = null,
     mouse_scroll: ?MouseEvent.Scroll = null,
     mouse_motion: ?MouseEvent.Motion = null,
     system: ?SystemEvent = null,
 
-    pub fn listener(
+    pub fn init(
+        allocator: std.mem.Allocator,
         keys_listen: ?[]const KeyEvent.Key,
-        mouse_button_listen: ?[]const MouseEvent.Button,
+        mouse_button_listen: ?[]MouseEvent.Button,
         mouse_scroll_listen: ?MouseEvent.Scroll,
         mouse_motion_listen: ?MouseEvent.Motion,
         system_listen: ?SystemEvent,
     ) !EventMap {
-        if (keys_listen == null and
-            mouse_button_listen == null and
-            mouse_scroll_listen == null and
-            mouse_motion_listen == null and
-            system_listen == null)
-        {
-            return error.NeedEventToListen;
+        var key_map = std.ArrayList(KeyEvent.Key).init(allocator);
+
+        if (keys_listen) |list| {
+            try key_map.insertSlice(key_map.items.len, list);
         }
-        return .{
-            .keys = @constCast(keys_listen), // autofix
-            .mouse_button = @constCast(mouse_button_listen), // autofix
-            .mouse_scroll = mouse_scroll_listen, // autofix
-            .mouse_motion = mouse_motion_listen, // autofix
-            .system = system_listen, // autofix
+
+        return EventMap{
+            .keys = key_map,
+            .mouse_button = mouse_button_listen,
+            .mouse_scroll = mouse_scroll_listen,
+            .mouse_motion = mouse_motion_listen,
+            .system = system_listen,
         };
     }
-    pub fn create(
-        keys_listen: ?[]const KeyEvent.Key,
-        mouse_button_listen: ?[]const MouseEvent.Button,
-        mouse_scroll_listen: ?MouseEvent.Scroll,
-        mouse_motion_listen: ?MouseEvent.Motion,
-        system_listen: ?SystemEvent,
-    ) EventMap {
-        return .{
-            .keys = @constCast(keys_listen), // autofix
-            .mouse_button = @constCast(mouse_button_listen), // autofix
-            .mouse_scroll = mouse_scroll_listen, // autofix
-            .mouse_motion = mouse_motion_listen, // autofix
-            .system = system_listen, // autofix
-        };
+
+    pub fn deinit(self: *EventMap) void {
+        self.keys.deinit();
+        // Other fields are optional references — no ownership → no deinit
     }
 
     pub fn serialize(self: EventMap, allocator: std.mem.Allocator) ![]const u8 {
@@ -125,12 +114,10 @@ pub const EventMap = struct {
         const writer = buffer.writer();
 
         // Serialize keys
-        if (self.keys) |keys_| {
+        for (self.keys.items, 0..) |keys_, i| {
             try writer.writeAll("keys:");
-            for (keys_, 0..) |key, i| {
-                if (i > 0) try writer.writeByte(',');
-                try std.fmt.format(writer, "{}", .{@intFromEnum(key.code)});
-            }
+            if (i > 0) try writer.writeByte(',');
+            try std.fmt.format(writer, "{}", .{@intFromEnum(keys_.code)});
             try writer.writeByte(':');
         }
 
@@ -168,51 +155,49 @@ pub const EventMap = struct {
     /// lhs: subscribed
     /// rhs: received
     pub fn check_any(lhs: EventMap, rhs: EventMap, allocator: std.mem.Allocator) !bool {
-        if (lhs.keys == null or rhs.keys == null) {
+        if (lhs.keys.items.len == 0 or rhs.keys.items.len == 0) {
             return false;
         }
 
         // 0. get only pressed lhs
         var pressed_keys: std.ArrayList(KeyEvent.Key) = std.ArrayList(KeyEvent.Key).init(allocator);
         defer pressed_keys.deinit();
-
-        for (rhs.keys.?) |value| {
-            if (value.pressed) {
-                try pressed_keys.append(value);
+        for (rhs.keys.items, 0..rhs.keys.items.len) |r_entry, _| {
+            if (r_entry.pressed) {
+                try pressed_keys.append(r_entry);
             }
         }
 
         // 3. check
         var ok: bool = false;
-        for (lhs.keys.?) |lk| {
-            for (pressed_keys.items) |rk| {
-                if (rk.code == lk.code) {
+        for (rhs.keys.items) |r_entry| {
+            for (lhs.keys.items) |l_entry| {
+                if (r_entry.code == l_entry.code)
                     ok = true;
-                }
             }
         }
+
         return ok;
     }
 
     /// lhs: subscribed
     /// rhs: received
     pub fn check_combo(lhs: EventMap, rhs: EventMap, allocator: std.mem.Allocator) !bool {
-        if (lhs.keys == null or rhs.keys == null) {
+        if (lhs.keys.items.len == 0 or rhs.keys.items.len == 0) {
             return false;
         }
 
         // 0. get only pressed lhs
         var pressed_keys: std.ArrayList(KeyEvent.Key) = std.ArrayList(KeyEvent.Key).init(allocator);
         defer pressed_keys.deinit();
-
-        for (rhs.keys.?) |value| {
-            if (value.pressed) {
-                try pressed_keys.append(value);
+        for (rhs.keys.items, 0..rhs.keys.items.len) |r_entry, _| {
+            if (r_entry.pressed) {
+                try pressed_keys.append(r_entry);
             }
         }
 
         // 1. Check length
-        if (pressed_keys.items.len != lhs.keys.?.len) {
+        if (pressed_keys.items.len != lhs.keys.items.len) {
             return false;
         }
 
@@ -227,7 +212,6 @@ pub const EventMap = struct {
         if (!individual_keys) {
             return try check_combo(lhs, rhs, allocator);
         }
-
         return try check_any(lhs, rhs, allocator);
     }
 };

@@ -60,6 +60,7 @@ pub const EventManager = struct {
 
     pub fn subscribe(self: *EventManager, listen_for: EventMap, individual: bool, callback: EventCallback) !void {
         const event_string = try listen_for.serialize(self.allocator);
+
         if (!self.handlers.contains(event_string)) {
             try self.handlers.put(
                 event_string,
@@ -72,19 +73,21 @@ pub const EventManager = struct {
         }
     }
 
-    pub fn register(self: *EventManager, event_map: EventMap) !void {
+    pub fn register(self: *EventManager, event_map: *EventMap) !void {
         const event_string = try event_map.serialize(self.allocator);
         defer self.allocator.free(event_string);
 
+        std.log.debug("Rec: {any}", .{event_map.*.keys.items});
         var it = self.handlers.iterator();
 
         while (it.next()) |callback_pair| {
-            const found = try EventMap.check(callback_pair.value_ptr.*.trigger, event_map, callback_pair.value_ptr.individual, self.allocator);
+            const found = try EventMap.check(callback_pair.value_ptr.*.trigger, event_map.*, callback_pair.value_ptr.individual, self.allocator);
             if (!found) {
                 break;
             }
 
-            _ = callback_pair.value_ptr.*.callback.invoke(self, self.delta_time, @constCast(&event_map));
+            _ = callback_pair.value_ptr.*.callback.invoke(self, self.delta_time, @constCast(event_map));
         }
+        event_map.deinit();
     }
 };

@@ -66,10 +66,19 @@ pub const InputSystem = struct {
                         try self.keyboard_state.put(key, key_event);
                     }
                 },
+                c.sdl.SDL_EVENT_MOUSE_MOTION => {
+                    self.mouse_motion_state = .{
+                        .x = event.motion.x,
+                        .x_rel = event.motion.xrel,
+                        .y = event.motion.y,
+                        .y_rel = event.motion.yrel,
+                    };
+                },
                 else => {},
             }
 
-            const event_map = EventMap.create(
+            var event_map = try EventMap.init(
+                self.*.event_manager.allocator,
                 if (self.keyboard_state.capacity() > 0) self.keyboard_state.values() else null,
                 if (self.mouse_button_state.capacity() > 0) self.mouse_button_state.keys() else null,
                 self.mouse_scroll_state,
@@ -77,7 +86,7 @@ pub const InputSystem = struct {
                 self.system_state,
             );
 
-            try self.event_manager.register(event_map);
+            try self.event_manager.register(&event_map);
         }
 
         return false;
