@@ -81,6 +81,7 @@ fn toggle_grabbed(_: *EventSystem.EventManager, event_received: *EventSystem.Eve
     for (event_received.keys.items) |ev_k| {
         if (ev_k.code == .Key_G and ev_k.pressed) {
             _ = c.sdl.SDL_SetWindowMouseGrab(sdl_win, !_grabbed);
+            _ = c.sdl.SDL_SetWindowRelativeMouseMode(sdl_win, !_grabbed);
         }
     }
     return true;
