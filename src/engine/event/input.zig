@@ -72,7 +72,6 @@ pub const InputSystem = struct {
                         .x_rel = event.motion.xrel,
                         .y = event.motion.y,
                         .y_rel = event.motion.yrel,
-                        .grabbed = c.sdl.SDL_GetWindowMouseGrab(sdl_window),
                     };
                 },
                 else => {},
@@ -87,6 +86,7 @@ pub const InputSystem = struct {
                 self.system_state,
             );
 
+            event_map.grabbed = c.sdl.SDL_GetWindowMouseGrab(sdl_window);
             try self.event_manager.register(&event_map);
         }
 

@@ -31,7 +31,6 @@ pub const MouseEvent = struct {
         y: f32 = 0,
         x_rel: f32 = 0,
         y_rel: f32 = 0,
-        grabbed: bool = false,
     };
 
     pub const Button = struct {
@@ -43,14 +42,12 @@ pub const MouseEvent = struct {
         duration: u32,
         repeat: u32 = 1,
         timestamp: u64,
-        grabbed: bool = false,
     };
 
     pub const Scroll = struct {
         x_scroll: i32 = 0,
         y_scroll: i32 = 0,
         timestamp: u64 = 0,
-        grabbed: bool = false,
     };
 };
 
@@ -81,6 +78,7 @@ pub const EventMap = struct {
     mouse_scroll: ?MouseEvent.Scroll = null,
     mouse_motion: ?MouseEvent.Motion = null,
     system: ?SystemEvent = null,
+    grabbed: ?bool = null,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -219,9 +217,6 @@ pub const EventMap = struct {
 
     pub fn check_motion(lhs: EventMap, rhs: EventMap, _: std.mem.Allocator) !bool {
         if (lhs.mouse_motion != null and rhs.mouse_motion != null) {
-            if (lhs.mouse_motion.?.grabbed == rhs.mouse_motion.?.grabbed) {
-                return false;
-            }
             return true;
         }
         return false;
