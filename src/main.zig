@@ -64,6 +64,25 @@ fn on_move_key(_: *EventSystem.EventManager, event_received: *EventSystem.EventM
     return true;
 }
 fn on_mouse_motion(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, delta_time: *f32, ctx: *anyopaque) bool {
+    const cam: *components.camera.CameraData = @ptrCast(@alignCast(ctx));
+
+    if (event_received.mouse_motion != null and event_received.*.mouse_motion.?.grabbed) {
+        std.debug.print("motion {any}", .{event_received.*.mouse_motion});
+        components.camera.rotate(cam, event_received.mouse_motion.?.x_rel * delta_time.*, event_received.mouse_motion.?.y_rel * delta_time.*, 0, true);
+    }
+
+    return true;
+}
+
+fn toggle_grabbed(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, _: *f32, ctx: *anyopaque) bool {
+    const sdl_win: *c.sdl.SDL_Window = @ptrCast(@alignCast(ctx));
+    const _grabbed: bool = c.sdl.SDL_GetWindowMouseGrab(sdl_win);
+    std.log.debug("toggle_grabbed", .{});
+    for (event_received.keys.items) |ev_k| {
+        if (ev_k.code == .Key_G and ev_k.pressed) {
+            _ = c.sdl.SDL_SetWindowMouseGrab(sdl_win, !_grabbed);
+        }
+    }
     return true;
 }
 
@@ -219,6 +238,24 @@ pub fn main() !void {
     try event_manager.subscribe(
         try EventSystem.EventMap.init(
             event_manager.allocator,
+            &[_]EventSystem.KeyEvent.Key{
+                .{ .code = .Key_G, .pressed = true },
+            },
+            null,
+            null,
+            null,
+            null,
+        ),
+        true,
+        EventSystem.EventCallback.init(
+            game_renderer.window.sdl_window,
+            toggle_grabbed,
+        ),
+    );
+
+    try event_manager.subscribe(
+        try EventSystem.EventMap.init(
+            event_manager.allocator,
             null,
             null,
             null,
@@ -238,7 +275,7 @@ pub fn main() !void {
         delta_time = @as(f32, @floatFromInt(new_ticks - last_ticks)) / 1000;
         last_ticks = new_ticks;
 
-        quit = try input_manager.pollEvents();
+        quit = try input_manager.pollEvents(game_renderer.window.sdl_window);
 
         var fb_width: c_int = 0;
         var fb_height: c_int = 0;

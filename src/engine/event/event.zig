@@ -77,16 +77,16 @@ pub const EventManager = struct {
         const event_string = try event_map.serialize(self.allocator);
         defer self.allocator.free(event_string);
 
-        std.log.debug("Rec: {any}", .{event_map.*.keys.items});
         var it = self.handlers.iterator();
 
         while (it.next()) |callback_pair| {
-            const found = try EventMap.check(callback_pair.value_ptr.*.trigger, event_map.*, callback_pair.value_ptr.individual, self.allocator);
-            if (!found) {
-                break;
+            if (try EventMap.check_keys(callback_pair.value_ptr.*.trigger, event_map.*, callback_pair.value_ptr.individual, self.allocator)) {
+                _ = callback_pair.value_ptr.*.callback.invoke(self, self.delta_time, @constCast(event_map));
             }
 
-            _ = callback_pair.value_ptr.*.callback.invoke(self, self.delta_time, @constCast(event_map));
+            if (try EventMap.check_motion(callback_pair.value_ptr.*.trigger, event_map.*, self.allocator)) {
+                _ = callback_pair.value_ptr.*.callback.invoke(self, self.delta_time, @constCast(event_map));
+            }
         }
         event_map.deinit();
     }

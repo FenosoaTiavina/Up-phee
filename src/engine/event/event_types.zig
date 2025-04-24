@@ -25,13 +25,13 @@ pub const MouseEvent = struct {
     MouseMotion: ?Motion = null,
     MouseButton: std.StringHashMap(Button),
     MouseScroll: ?Scroll = null,
-    pollig: EventPollingContext = .None,
 
     pub const Motion = struct {
         x: f32 = 0,
         y: f32 = 0,
         x_rel: f32 = 0,
         y_rel: f32 = 0,
+        grabbed: bool = false,
     };
 
     pub const Button = struct {
@@ -43,12 +43,14 @@ pub const MouseEvent = struct {
         duration: u32,
         repeat: u32 = 1,
         timestamp: u64,
+        grabbed: bool = false,
     };
 
     pub const Scroll = struct {
         x_scroll: i32 = 0,
         y_scroll: i32 = 0,
         timestamp: u64 = 0,
+        grabbed: bool = false,
     };
 };
 
@@ -208,11 +210,21 @@ pub const EventMap = struct {
 
     /// lhs: subscribed
     /// rhs: received
-    pub fn check(lhs: EventMap, rhs: EventMap, individual_keys: bool, allocator: std.mem.Allocator) !bool {
+    pub fn check_keys(lhs: EventMap, rhs: EventMap, individual_keys: bool, allocator: std.mem.Allocator) !bool {
         if (!individual_keys) {
             return try check_combo(lhs, rhs, allocator);
         }
         return try check_any(lhs, rhs, allocator);
+    }
+
+    pub fn check_motion(lhs: EventMap, rhs: EventMap, _: std.mem.Allocator) !bool {
+        if (lhs.mouse_motion != null and rhs.mouse_motion != null) {
+            if (lhs.mouse_motion.?.grabbed == rhs.mouse_motion.?.grabbed) {
+                return false;
+            }
+            return true;
+        }
+        return false;
     }
 };
 

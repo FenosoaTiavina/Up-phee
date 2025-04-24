@@ -43,7 +43,7 @@ pub const InputSystem = struct {
         self.keyboard_state.deinit();
     }
 
-    pub fn pollEvents(self: *Self) !bool {
+    pub fn pollEvents(self: *Self, sdl_window: *c.sdl.SDL_Window) !bool {
 
         // Poll SDL events
         var event: c.sdl.SDL_Event = undefined;
@@ -72,6 +72,7 @@ pub const InputSystem = struct {
                         .x_rel = event.motion.xrel,
                         .y = event.motion.y,
                         .y_rel = event.motion.yrel,
+                        .grabbed = c.sdl.SDL_GetWindowMouseGrab(sdl_window),
                     };
                 },
                 else => {},
