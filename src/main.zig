@@ -19,7 +19,16 @@ const T_ = @import("types.zig");
 const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
 
-fn test() !void {}
+fn on_move_key(event_manager: *EventSystem.EventManager, event_received: *EventSystem.EventMap, delta_time: *f32, ctx: *anyopaque) bool {
+    _ = delta_time; // autofix
+    _ = event_manager; // autofix
+    const cam: *components.camera.CameraData = @ptrCast(@alignCast(ctx));
+    _ = cam; // autofix
+
+    std.log.debug("move {any}", .{event_received.*.keys});
+
+    return true;
+}
 
 pub fn main() !void {
     // Create an allocator
@@ -32,12 +41,6 @@ pub fn main() !void {
 
     var game_renderer = try renderer.Renderer.init(allocator, WINDOW_WIDTH, WINDOW_HEIGHT, "HEHE");
     defer game_renderer.deinit();
-
-    var event_manager = try event.manager.EventManager.init(allocator);
-    defer event_manager.deinit();
-
-    var input_manager = try event.input.InputSystem.init(&event_manager);
-    defer input_manager.deinit();
 
     // Initialize zgui
     zgui.init(allocator);
@@ -154,17 +157,21 @@ pub fn main() !void {
     var input_manager = InputSystem.init(allocator, &event_manager);
     defer input_manager.deinit();
 
-    event_manager.subscribe(
-        EventSystem.EventMap.create(
+    try event_manager.subscribe(
+        try EventSystem.EventMap.listener(
+            &[_]EventSystem.KeyEvent.Key{
+                .{ .code = .Key_W, .pressed = true },
+                .{ .code = .Key_S, .pressed = true },
+            },
             null,
-            false,
             null,
             null,
             null,
         ),
+        false,
         EventSystem.EventCallback.init(
             cam,
-            null,
+            on_move_key,
         ),
     );
 
