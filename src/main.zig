@@ -63,25 +63,35 @@ fn on_move_key(_: *EventSystem.EventManager, event_received: *EventSystem.EventM
 
     return true;
 }
-fn on_mouse_motion(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, delta_time: *f32, ctx: *anyopaque) bool {
+fn on_mouse_motion(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, _: *f32, ctx: *anyopaque) bool {
     const cam: *components.camera.CameraData = @ptrCast(@alignCast(ctx));
 
     if (event_received.mouse_motion != null and event_received.*.mouse_motion.?.grabbed) {
         std.debug.print("motion {any}", .{event_received.*.mouse_motion});
-        components.camera.rotate(cam, event_received.mouse_motion.?.x_rel * delta_time.*, event_received.mouse_motion.?.y_rel * delta_time.*, 0, true);
+        components.camera.rotate(cam, event_received.mouse_motion.?.x_rel, event_received.mouse_motion.?.y_rel, 0, true);
     }
 
     return true;
 }
 
-fn toggle_grabbed(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, _: *f32, ctx: *anyopaque) bool {
+fn toggle_grabbed_off(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, _: *f32, ctx: *anyopaque) bool {
     const sdl_win: *c.sdl.SDL_Window = @ptrCast(@alignCast(ctx));
-    const _grabbed: bool = c.sdl.SDL_GetWindowMouseGrab(sdl_win);
-    std.log.debug("toggle_grabbed", .{});
+
+    for (event_received.keys.items) |ev_k| {
+        if (ev_k.code == .Key_F and ev_k.pressed) {
+            _ = c.sdl.SDL_SetWindowMouseGrab(sdl_win, false);
+            _ = c.sdl.SDL_SetWindowRelativeMouseMode(sdl_win, false);
+        }
+    }
+    return true;
+}
+fn toggle_grabbed_on(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, _: *f32, ctx: *anyopaque) bool {
+    const sdl_win: *c.sdl.SDL_Window = @ptrCast(@alignCast(ctx));
+
     for (event_received.keys.items) |ev_k| {
         if (ev_k.code == .Key_G and ev_k.pressed) {
-            _ = c.sdl.SDL_SetWindowMouseGrab(sdl_win, !_grabbed);
-            _ = c.sdl.SDL_SetWindowRelativeMouseMode(sdl_win, !_grabbed);
+            _ = c.sdl.SDL_SetWindowMouseGrab(sdl_win, true);
+            _ = c.sdl.SDL_SetWindowRelativeMouseMode(sdl_win, true);
         }
     }
     return true;
@@ -250,7 +260,24 @@ pub fn main() !void {
         true,
         EventSystem.EventCallback.init(
             game_renderer.window.sdl_window,
-            toggle_grabbed,
+            toggle_grabbed_off,
+        ),
+    );
+    try event_manager.subscribe(
+        try EventSystem.EventMap.init(
+            event_manager.allocator,
+            &[_]EventSystem.KeyEvent.Key{
+                .{ .code = .Key_F, .pressed = true },
+            },
+            null,
+            null,
+            null,
+            null,
+        ),
+        true,
+        EventSystem.EventCallback.init(
+            game_renderer.window.sdl_window,
+            toggle_grabbed_on,
         ),
     );
 

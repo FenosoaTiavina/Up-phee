@@ -99,7 +99,7 @@ pub fn rotate(camera: *CameraData, x: f32, y: f32, z: f32, constraint_picth: boo
     const _z = camera.sensitivity * z;
 
     camera.*.yaw += _x;
-    camera.*.pitch += _y;
+    camera.*.pitch -= _y;
     camera.*.roll += _z;
 
     if (constraint_picth) {
