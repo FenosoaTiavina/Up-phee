@@ -30,20 +30,21 @@ pub const EventCallback = struct {
         };
     }
 
-    pub fn invoke(self: *const EventCallback, event_manager: *EventManager, delta_time: *f32, event: *EventMap) bool {
-        return self.func(event_manager, event, delta_time, self.context);
+    pub fn invoke(self: *const EventCallback, event_manager: *EventManager, delta_time: *f32, triggers: *EventMap) bool {
+        return self.func(event_manager, triggers, delta_time, self.context);
     }
 };
 
 pub const EventManager = struct {
     allocator: std.mem.Allocator,
-    handlers: std.StringHashMap(EventCallback),
+    handlers: std.StringHashMap(HandlerData),
     delta_time: *f32,
+    const HandlerData = struct { trigger: EventMap, individual: bool, callback: EventCallback };
 
     pub fn init(allocator: std.mem.Allocator, delta_t: *f32) !EventManager {
         return .{
             .allocator = allocator,
-            .handlers = std.StringHashMap(EventCallback).init(allocator),
+            .handlers = std.StringHashMap(HandlerData).init(allocator),
             .delta_time = delta_t,
         };
     }
@@ -57,19 +58,33 @@ pub const EventManager = struct {
         self.handlers.deinit();
     }
 
-    pub fn subscribe(self: *EventManager, listen_for: EventMap, callback: EventCallback) void {
-        const hash = try listen_for.hash(self.allocator);
-        if (!self.handlers.contains(hash)) {
-            self.handlers.put(hash, callback);
+    pub fn subscribe(self: *EventManager, listen_for: EventMap, individual: bool, callback: EventCallback) !void {
+        const event_string = try listen_for.serialize(self.allocator);
+        if (!self.handlers.contains(event_string)) {
+            try self.handlers.put(
+                event_string,
+                .{
+                    .callback = callback,
+                    .individual = individual,
+                    .trigger = listen_for,
+                },
+            );
         }
     }
 
     pub fn register(self: *EventManager, event_map: EventMap) !void {
-        const hash = try event_map.hash(self.allocator);
-        if (!self.handlers.contains(hash)) {
-            if (self.handlers.get(hash)) |callback| {
-                _ = callback.invoke(self, self.delta_time, @constCast(&event_map));
+        const event_string = try event_map.serialize(self.allocator);
+        defer self.allocator.free(event_string);
+
+        var it = self.handlers.iterator();
+
+        while (it.next()) |callback_pair| {
+            const found = try EventMap.check(callback_pair.value_ptr.*.trigger, event_map, callback_pair.value_ptr.individual, self.allocator);
+            if (!found) {
+                break;
             }
+
+            _ = callback_pair.value_ptr.*.callback.invoke(self, self.delta_time, @constCast(&event_map));
         }
     }
 };
