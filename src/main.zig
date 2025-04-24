@@ -63,6 +63,7 @@ fn on_move_key(_: *EventSystem.EventManager, event_received: *EventSystem.EventM
 
     return true;
 }
+
 fn on_mouse_motion(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, _: *f32, ctx: *anyopaque) bool {
     const cam: *components.camera.CameraData = @ptrCast(@alignCast(ctx));
 
