@@ -1,1 +1,2 @@
-[] Mouse Event System
+[X] Mouse Event System
+[] Game Struct
