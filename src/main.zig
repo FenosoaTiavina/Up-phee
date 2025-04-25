@@ -22,19 +22,19 @@ const WINDOW_HEIGHT = 800;
 fn on_move_key(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, delta_time: *f32, ctx: *anyopaque) bool {
     const cam: *components.camera.CameraData = @ptrCast(@alignCast(ctx));
     var movement = T_.Vec3_f32{ 0.0, 0.0, 0.0 };
-    std.log.debug("Keys: {any}", .{event_received.keys.items});
+
     for (event_received.keys.items) |ev_k| {
         if (ev_k.code == .Key_W and ev_k.pressed) {
-            movement[2] += 1.0;
+            movement[2] += 1.0; // Forward is positive Z in camera space
         }
         if (ev_k.code == .Key_S and ev_k.pressed) {
-            movement[2] -= 1.0;
+            movement[2] -= 1.0; // Backward is negative Z in camera space
         }
         if (ev_k.code == .Key_A and ev_k.pressed) {
-            movement[0] -= 1.0;
+            movement[0] -= 1.0; // Left is negative X in camera space
         }
         if (ev_k.code == .Key_D and ev_k.pressed) {
-            movement[0] += 1.0;
+            movement[0] += 1.0; // Right is positive X in camera space
         }
     }
 
@@ -44,6 +44,7 @@ fn on_move_key(_: *EventSystem.EventManager, event_received: *EventSystem.EventM
         const length_squared = movement[0] * movement[0] +
             movement[1] * movement[1] +
             movement[2] * movement[2];
+
         // Normalize only if length is not 1 (diagonal movement)
         if (length_squared > 1.0001) {
             const length = @sqrt(length_squared);
@@ -51,12 +52,14 @@ fn on_move_key(_: *EventSystem.EventManager, event_received: *EventSystem.EventM
             movement[1] /= length;
             movement[2] /= length;
         }
+
         // Scale movement by delta time and speed
         const scaled_movement = T_.Vec3_f32{
             movement[0] * delta_time.* * cam.speed,
             movement[1] * delta_time.* * cam.speed,
             movement[2] * delta_time.* * cam.speed,
         };
+
         // Apply movement to camera
         components.camera.move(cam, scaled_movement);
     }
@@ -119,7 +122,7 @@ pub fn main() !void {
     const aspect = game_renderer.getAspectRatio();
 
     // Add camera component
-    registry.add(camera_entity, components.camera.init(.{ 0, 0, -5 }, .{ 0, 0, 0 }, aspect));
+    registry.add(camera_entity, components.camera.init(.{ 0, 0, -5 }, .{ 0, 0, 0 }, aspect, false));
 
     // Create a quad entity
     const quad_entity = registry.create();
@@ -311,7 +314,7 @@ pub fn main() !void {
             });
 
             if (zgui.button("reset Cam", .{})) {
-                cam.*.position = .{ 0, 0, -5, 0 };
+                cam.*.position = .{ 0, 0, -5, 1.0 }; // W component should be 1.0
                 components.camera.update(cam);
             }
         }

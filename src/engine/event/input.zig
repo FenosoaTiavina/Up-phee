@@ -87,7 +87,7 @@ pub const InputSystem = struct {
             );
 
             event_map.grabbed = c.sdl.SDL_GetWindowMouseGrab(sdl_window);
-            try self.event_manager.register(&event_map);
+            try self.event_manager.dispatch(&event_map);
         }
 
         return false;

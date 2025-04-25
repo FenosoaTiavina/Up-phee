@@ -73,7 +73,7 @@ pub const EventManager = struct {
         }
     }
 
-    pub fn register(self: *EventManager, event_map: *EventMap) !void {
+    pub fn dispatch(self: *EventManager, event_map: *EventMap) !void {
         const event_string = try event_map.serialize(self.allocator);
         defer self.allocator.free(event_string);
 
