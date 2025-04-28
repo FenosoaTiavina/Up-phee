@@ -279,7 +279,7 @@ pub fn main() !void {
         delta_time = @as(f32, @floatFromInt(new_ticks - last_ticks)) / 1000;
         last_ticks = new_ticks;
 
-        quit = try input_manager.pollEvents(game_renderer.window.sdl_window);
+        quit = try input_manager.pollEvents(game_renderer.window.sdl_window, true);
 
         var fb_width: c_int = 0;
         var fb_height: c_int = 0;
