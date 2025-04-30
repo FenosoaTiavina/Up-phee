@@ -1,7 +1,7 @@
 const std = @import("std");
-const keys = @import("keys.zig");
-const input = @import("input.zig");
-const EventTypes = @import("event_types.zig");
+pub const keys = @import("keys.zig");
+pub const input = @import("input.zig");
+pub const EventTypes = @import("event_types.zig");
 
 // Re-export all the event types
 pub const KeyEvent = EventTypes.KeyEvent;
@@ -10,7 +10,6 @@ pub const MouseEvent = EventTypes.MouseEvent;
 pub const SystemEvent = EventTypes.SystemEvent;
 pub const EventData = EventTypes.EventData;
 pub const Event = EventTypes.Event;
-pub const KeySubscriptionType = EventTypes.KeySubscriptionType;
 
 pub fn createEvent(name: []u8, data: EventData) Event {
     return EventTypes.createEvent(name, data);

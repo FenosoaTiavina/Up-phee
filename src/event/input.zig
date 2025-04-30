@@ -1,17 +1,15 @@
 const std = @import("std");
 const zgui = @import("zgui");
 
-const c = @import("../../imports.zig");
+const c = @import("../imports.zig");
 const EventSystem = @import("./event.zig");
 const EventTypes = @import("event_types.zig");
-pub const KeyEvent = EventTypes.KeyEvent;
-pub const EventMap = EventTypes.EventMap;
-pub const MouseEvent = EventTypes.MouseEvent;
-pub const SystemEvent = EventTypes.SystemEvent;
-pub const EventData = EventTypes.EventData;
-pub const Event = EventTypes.Event;
-pub const KeySubscriptionType = EventTypes.KeySubscriptionType;
-
+const KeyEvent = EventTypes.KeyEvent;
+const EventMap = EventTypes.EventMap;
+const MouseEvent = EventTypes.MouseEvent;
+const SystemEvent = EventTypes.SystemEvent;
+const EventData = EventTypes.EventData;
+const Event = EventTypes.Event;
 const Keys = @import("keys.zig").Keys;
 
 // Re-export all the event types

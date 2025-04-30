@@ -1,10 +1,9 @@
 const std = @import("std");
 const crypto = std.crypto;
 
-const sort = @import("../../utils/quicksort.zig");
+// const sort = @import("../../utils/quicksort.zig");
 const keys = @import("keys.zig");
 
-const APPROX_TOLERANCE = 2;
 // Defines how key subscriptions should be processed
 pub const EventPollingContext = enum {
     None,

@@ -4,10 +4,10 @@ const ecs = @import("ecs");
 const zgui = @import("zgui");
 const zm = @import("zmath");
 
-const T_ = @import("../types.zig");
-const c = @import("../imports.zig");
+const T_ = @import("types.zig");
+const c = @import("imports.zig");
 const shader = @import("shader.zig");
-const components = @import("../components.zig");
+const components = @import("./components/components.zig");
 
 const Window = struct {
     sdl_window: *c.sdl.SDL_Window,
@@ -152,12 +152,12 @@ pub const Renderer = struct {
     pub fn render(self: *Renderer, registry: *ecs.Registry, active_camera_entity: ecs.Entity) !void {
         const cmd = self.command_buffers.items[0];
 
-        const camera_component = registry.get(components.camera.CameraData, active_camera_entity);
+        const camera_component = registry.get(components.Camera.CameraData, active_camera_entity);
 
         var renderable_entities = registry.view(
             .{
-                components.transform.Transform,
-                components.mesh.MeshData,
+                components.Transform.Transform,
+                components.Mesh.MeshData,
             },
             .{},
         );
@@ -165,8 +165,8 @@ pub const Renderer = struct {
         var entt_view_iter = renderable_entities.entityIterator();
 
         while (entt_view_iter.next()) |entity| {
-            const mesh = renderable_entities.get(components.mesh.MeshData, entity);
-            const trasform = renderable_entities.get(components.transform.Transform, entity);
+            const mesh = renderable_entities.get(components.Mesh.MeshData, entity);
+            const trasform = renderable_entities.get(components.Transform.Transform, entity);
 
             if (registry.has(PipelineComponent, entity)) {
                 const pipeline_comp =
@@ -174,8 +174,8 @@ pub const Renderer = struct {
                 c.sdl.SDL_BindGPUGraphicsPipeline(self.render_pass, self.pipelines.get(pipeline_comp.*.handle));
             }
 
-            if (registry.has(components.mesh.TextureData, entity)) {
-                const texture_comp: components.mesh.TextureData = renderable_entities.get(components.mesh.TextureData, entity).*;
+            if (registry.has(components.Mesh.TextureData, entity)) {
+                const texture_comp: components.Mesh.TextureData = renderable_entities.get(components.Mesh.TextureData, entity).*;
                 c.sdl.SDL_BindGPUFragmentSamplers(
                     self.render_pass,
                     0,
@@ -184,7 +184,7 @@ pub const Renderer = struct {
                 );
             }
 
-            components.mesh.updateAndRender(
+            components.Mesh.updateAndRender(
                 cmd,
                 self.render_pass.?,
                 trasform,

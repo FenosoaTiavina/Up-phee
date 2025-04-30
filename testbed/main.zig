@@ -1,26 +1,28 @@
 // main.zig
 const std = @import("std");
 
-const ecs = @import("ecs");
-const zgui = @import("zgui");
+const uph = @import("uph");
 
-const c = @import("imports.zig");
-const components = @import("components.zig");
-const renderer = @import("engine/renderer.zig");
-const shader = @import("engine/shader.zig");
+const ecs = uph.ecs;
+const zgui = uph.zgui;
+const zmath = uph.zmath;
 
-const EventSystem = @import("engine/event/event.zig");
-const Keys = @import("engine/event/keys.zig").Keys;
-const KeyBitfield = @import("engine/event/keybitfield.zig").KeyBitfield;
-const InputSystem = @import("engine/event/input.zig").InputSystem;
+const c = uph.clib;
+const Renderer = uph.Renderer;
+const shader = uph.Shader;
+const Components = uph.Components;
 
-const T_ = @import("types.zig");
+const EventSystem = uph.Events;
+const Keys = EventSystem.keys.Keys;
+const InputSystem = EventSystem.input.InputSystem;
+
+const T_ = uph.Types;
 
 const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
 
 fn on_move_key(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, delta_time: *f32, ctx: *anyopaque) bool {
-    const cam: *components.camera.CameraData = @ptrCast(@alignCast(ctx));
+    const cam: *Components.Camera.CameraData = @ptrCast(@alignCast(ctx));
     var movement = T_.Vec3_f32{ 0.0, 0.0, 0.0 };
 
     for (event_received.keys.items) |ev_k| {
@@ -61,17 +63,17 @@ fn on_move_key(_: *EventSystem.EventManager, event_received: *EventSystem.EventM
         };
 
         // Apply movement to camera
-        components.camera.move(cam, scaled_movement);
+        Components.Camera.move(cam, scaled_movement);
     }
 
     return true;
 }
 
 fn on_mouse_motion(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, _: *f32, ctx: *anyopaque) bool {
-    const cam: *components.camera.CameraData = @ptrCast(@alignCast(ctx));
+    const cam: *Components.Camera.CameraData = @ptrCast(@alignCast(ctx));
 
     if (event_received.mouse_motion != null and event_received.grabbed != null and event_received.grabbed.? == true) {
-        components.camera.rotate(cam, event_received.mouse_motion.?.x_rel, event_received.mouse_motion.?.y_rel, 0, true);
+        Components.Camera.rotate(cam, event_received.mouse_motion.?.x_rel, event_received.mouse_motion.?.y_rel, 0, true);
     }
 
     return true;
@@ -99,7 +101,7 @@ pub fn main() !void {
     // Initialize the ECS registry
     var registry = ecs.Registry.init(allocator);
 
-    var game_renderer = try renderer.Renderer.init(allocator, WINDOW_WIDTH, WINDOW_HEIGHT, "HEHE");
+    var game_renderer = try Renderer.Renderer.init(allocator, WINDOW_WIDTH, WINDOW_HEIGHT, "HEHE");
     defer game_renderer.deinit();
 
     // Initialize zgui
@@ -122,13 +124,13 @@ pub fn main() !void {
     const aspect = game_renderer.getAspectRatio();
 
     // Add camera component
-    registry.add(camera_entity, components.camera.init(.{ 0, 0, -5 }, .{ 0, 0, 0 }, aspect, false));
+    registry.add(camera_entity, Components.Camera.init(.{ 0, 0, -5 }, .{ 0, 0, 0 }, aspect, false));
 
     // Create a quad entity
     const quad_entity = registry.create();
 
     // Create mesh component for quad
-    const vertices = [_]components.mesh.Vertex{
+    const vertices = [_]Components.Mesh.Vertex{
         .{ // top-left
             .position = .{ -0.5, 0.5, 0 },
             .color = .{ 1.0, 1.0, 1.0, 1.0 },
@@ -154,21 +156,21 @@ pub fn main() !void {
     const indices = [_]u16{ 0, 1, 2, 2, 3, 0 };
 
     // Create mesh component
-    const mesh = try components.mesh.createMeshComponent(&game_renderer, &vertices, &indices);
+    const mesh = try Components.Mesh.createMeshComponent(&game_renderer, &vertices, &indices);
 
     registry.add(quad_entity, mesh);
 
     // Create texture component
-    const texture = try components.mesh.createTextureComponent(&game_renderer, "assets/kenney_prototypeTextures/PNG/Purple/texture_10.png");
+    const texture = try Components.Mesh.createTextureComponent(&game_renderer, "assets/kenney_prototypeTextures/PNG/Purple/texture_10.png");
     registry.add(quad_entity, texture);
 
-    try renderer.createGraphicsPipeline(&game_renderer, .{
+    try Renderer.createGraphicsPipeline(&game_renderer, .{
         .vertex_shader = try shader.Shader.loadShader(game_renderer.device.?, "assets/shaders/compiled/PositionColor.vert.spv", c.sdl.SDL_GPU_SHADERSTAGE_VERTEX, 1, 0, 0, 0),
         .fragment_shader = try shader.Shader.loadShader(game_renderer.device.?, "assets/shaders/compiled/SolidColor.frag.spv", c.sdl.SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 0, 1),
         .vertex_input_state = .{
             .vertex_buffer_descriptions = &c.sdl.SDL_GPUVertexBufferDescription{
                 .slot = 0,
-                .pitch = @sizeOf(components.mesh.Vertex),
+                .pitch = @sizeOf(Components.Mesh.Vertex),
                 .input_rate = c.sdl.SDL_GPU_VERTEXINPUTRATE_VERTEX,
                 .instance_step_rate = 0,
             },
@@ -178,19 +180,19 @@ pub fn main() !void {
                     .location = 0,
                     .buffer_slot = 0,
                     .format = c.sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-                    .offset = @offsetOf(components.mesh.Vertex, "position"),
+                    .offset = @offsetOf(Components.Mesh.Vertex, "position"),
                 },
                 .{
                     .location = 1,
                     .buffer_slot = 0,
                     .format = c.sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-                    .offset = @offsetOf(components.mesh.Vertex, "color"),
+                    .offset = @offsetOf(Components.Mesh.Vertex, "color"),
                 },
                 .{
                     .location = 2,
                     .buffer_slot = 0,
                     .format = c.sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
-                    .offset = @offsetOf(components.mesh.Vertex, "uv"),
+                    .offset = @offsetOf(Components.Mesh.Vertex, "uv"),
                 },
             },
             .num_vertex_attributes = 3,
@@ -199,7 +201,7 @@ pub fn main() !void {
     });
 
     // Add transform component
-    const transform = components.transform.init();
+    const transform = Components.Transform.init();
     registry.add(quad_entity, transform);
 
     // Game loop variables
@@ -209,7 +211,7 @@ pub fn main() !void {
     var quit = false;
     _ = &quit;
 
-    const cam = registry.get(components.camera.CameraData, camera_entity);
+    const cam = registry.get(Components.Camera.CameraData, camera_entity);
 
     var delta_time: f32 = 0;
 
@@ -297,25 +299,25 @@ pub fn main() !void {
         zgui.setNextWindowSize(.{ .w = -1.0, .h = -1.0, .cond = .first_use_ever });
         if (zgui.begin("info", .{})) {
             zgui.text("camera target :{any},{any},{any}", .{
-                registry.get(components.camera.CameraData, camera_entity).*.front[0],
-                registry.get(components.camera.CameraData, camera_entity).*.front[1],
-                registry.get(components.camera.CameraData, camera_entity).*.front[2],
+                registry.get(Components.Camera.CameraData, camera_entity).*.front[0],
+                registry.get(Components.Camera.CameraData, camera_entity).*.front[1],
+                registry.get(Components.Camera.CameraData, camera_entity).*.front[2],
             });
             zgui.text("camera front :{any},{any},{any}", .{
-                registry.get(components.camera.CameraData, camera_entity).*.front[0],
-                registry.get(components.camera.CameraData, camera_entity).*.front[1],
-                registry.get(components.camera.CameraData, camera_entity).*.front[2],
+                registry.get(Components.Camera.CameraData, camera_entity).*.front[0],
+                registry.get(Components.Camera.CameraData, camera_entity).*.front[1],
+                registry.get(Components.Camera.CameraData, camera_entity).*.front[2],
             });
 
             zgui.text("camera position :{any},{any},{any}", .{
-                registry.get(components.camera.CameraData, camera_entity).*.position[0],
-                registry.get(components.camera.CameraData, camera_entity).*.position[1],
-                registry.get(components.camera.CameraData, camera_entity).*.position[2],
+                registry.get(Components.Camera.CameraData, camera_entity).*.position[0],
+                registry.get(Components.Camera.CameraData, camera_entity).*.position[1],
+                registry.get(Components.Camera.CameraData, camera_entity).*.position[2],
             });
 
             if (zgui.button("reset Cam", .{})) {
                 cam.*.position = .{ 0, 0, -5, 1.0 }; // W component should be 1.0
-                components.camera.update(cam);
+                Components.Camera.update(cam);
             }
         }
         zgui.end();

@@ -1,58 +1,65 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
-pub fn build(builder: *std.Build) !void {
-    const target = builder.standardTargetOptions(.{});
-    const optimize = .Debug;
+pub fn build(b: *std.Build) void {
+    const optimize = b.standardOptimizeOption(.{});
+    const target = b.standardTargetOptions(.{});
 
-    var exe: *std.Build.Step.Compile = undefined;
-    exe = builder.addExecutable(.{
-        .name = "game_sdl3",
-        .root_source_file = builder.path("src/main.zig"),
+    const uph = getModule(b, target, optimize);
+
+    const exe = b.addExecutable(.{
+        .name = "testbed",
+        .root_source_file = b.path("testbed/main.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    // const zalgebra = builder.dependency("zalgebra", .{
-    //     .target = target,
-    //     .optimize = optimize,
-    // });
-    // exe.root_module.addImport("zalgebra", zalgebra.module("zalgebra"));
+    exe.root_module.addImport("uph", uph);
+    b.installArtifact(exe);
 
-    const zmath = builder.dependency("zmath", .{
+    setupRunStep(b, exe);
+}
+
+pub fn getModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Module {
+    const mod = b.createModule(.{
+        .root_source_file = b.path("src/uph.zig"),
         .target = target,
         .optimize = optimize,
     });
-    exe.root_module.addImport("zmath", zmath.module("root"));
+    const zmath = b.dependency("zmath", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    mod.addImport("zmath", zmath.module("root"));
 
-    const zgui = builder.dependency("zgui", .{
+    const zgui = b.dependency("zgui", .{
         .target = target,
         .backend = .sdl3_gpu,
     });
-    exe.root_module.addImport("zgui", zgui.module("root"));
-    exe.linkLibrary(zgui.artifact("imgui"));
+    mod.addImport("zgui", zgui.module("root"));
+    mod.linkLibrary(zgui.artifact("imgui"));
 
-    const entt = builder.dependency("entt", .{});
-    exe.root_module.addImport("ecs", entt.module("zig-ecs"));
-    exe.linkSystemLibrary("sdl3");
+    const entt = b.dependency("entt", .{});
+    mod.addImport("ecs", entt.module("zig-ecs"));
 
-    exe.addCSourceFiles(.{
-        .files = &[_][]const u8{"c/stb_image.c"},
-    });
+    mod.addCSourceFiles(
+        .{
+            .files = &.{"./c/stb_image.c"},
+        },
+    );
 
-    builder.installArtifact(exe);
+    mod.linkSystemLibrary("sdl3", .{});
 
-    try run(exe, builder);
+    return mod;
 }
 
-fn run(exe: *std.Build.Step.Compile, builder: *std.Build) !void {
-    const run_cmd = builder.addRunArtifact(exe);
+pub fn setupRunStep(
+    b: *std.Build,
+    testbed: *std.Build.Step.Compile,
+) void {
+    const run_cmd = b.addRunArtifact(testbed);
+    run_cmd.step.dependOn(b.getInstallStep());
 
-    run_cmd.step.dependOn(builder.getInstallStep());
-
-    if (builder.args) |args| {
-        run_cmd.addArgs(args);
-    }
-
-    const run_step = builder.step("run", "Run the app");
+    const run_step = b.step("run", "Run the application");
     run_step.dependOn(&run_cmd.step);
 }
