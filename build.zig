@@ -4,12 +4,26 @@ const builtin = @import("builtin");
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
+
+    const uph = getModule(b, target, optimize);
+
+    const exe = b.addExecutable(.{
+        .name = "testbed",
+        .root_source_file = b.path("testbed/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    exe.root_module.addImport("uph", uph);
+    b.installArtifact(exe);
+
+    setupRunStep(b, exe);
 }
 
-pub fn getModul(b: *std.Build, target: *std.Build.ResolvedTarget, optimize: *std.builtin.OptimizeMode) *std.Build.Module {
+pub fn getModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Module {
     const mod = b.createModule(.{
         .root_source_file = b.path("src/uph.zig"),
-        .target = target.*,
+        .target = target,
         .optimize = optimize,
     });
     const zmath = b.dependency("zmath", .{
@@ -27,6 +41,8 @@ pub fn getModul(b: *std.Build, target: *std.Build.ResolvedTarget, optimize: *std
 
     const entt = b.dependency("entt", .{});
     mod.addImport("ecs", entt.module("zig-ecs"));
+
+    mod.linkSystemLibrary("sdl3", .{});
 
     return mod;
 }
