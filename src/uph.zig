@@ -9,3 +9,4 @@ pub const zgui = @import("zgui");
 pub const zmath = @import("zmath");
 
 pub const Components = @import("./components/components.zig");
+pub const Maths = @import("utils/math.zig");
