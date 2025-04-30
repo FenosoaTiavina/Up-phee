@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("../imports.zig");
+const c = @import("./imports.zig");
 
 pub const Shader = struct {
     module: *c.sdl.SDL_GPUShader,

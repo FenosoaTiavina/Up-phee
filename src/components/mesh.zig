@@ -1,9 +1,9 @@
 const std = @import("std");
 
-const T_ = @import("uph").Types;
+const T_ = @import("../types.zig");
 
-const c = @import("uph").clib;
-const rd = @import("uph").Renderer;
+const c = @import("../imports.zig");
+const rd = @import("../renderer.zig");
 
 const components = @import("./components.zig");
 
@@ -112,11 +112,11 @@ pub fn createTextureComponent(renderer: *rd.Renderer, texture_path: []const u8) 
 pub fn updateAndRender(
     command_buffer: *c.sdl.SDL_GPUCommandBuffer,
     render_pass: *c.sdl.SDL_GPURenderPass,
-    transform: *components.transform.Transform,
+    transform: *components.Transform.Transform,
     mesh: *MeshData,
-    camera_component: *components.camera.CameraData,
+    camera_component: *components.Camera.CameraData,
 ) void {
-    components.transform.updateModelMatrix(transform);
+    components.Transform.updateModelMatrix(transform);
     // Bind vertex and index buffers
     const vert_buffer_binding = c.sdl.SDL_GPUBufferBinding{
         .buffer = mesh.vertex_buffer,
@@ -125,13 +125,13 @@ pub fn updateAndRender(
     c.sdl.SDL_BindGPUVertexBuffers(render_pass, 0, &vert_buffer_binding, 1);
     c.sdl.SDL_BindGPUIndexBuffer(render_pass, &.{ .buffer = mesh.index_buffer, .offset = 0 }, c.sdl.SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
-    const ubo = components.render.UniformBufferObject{
+    const ubo = components.Render.UniformBufferObject{
         .model = transform.model_matrix,
         .view = camera_component.view_matrix,
         .projection = camera_component.projection_matrix,
     };
 
-    c.sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &ubo, @sizeOf(components.render.UniformBufferObject));
+    c.sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &ubo, @sizeOf(components.Render.UniformBufferObject));
 
     c.sdl.SDL_DrawGPUIndexedPrimitives(render_pass, mesh.num_indices, 1, 0, 0, 0);
 }

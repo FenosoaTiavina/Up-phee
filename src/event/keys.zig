@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("../../imports.zig");
+const c = @import("../imports.zig");
 
 pub const Keys = enum(u8) {
     // Modifiers first

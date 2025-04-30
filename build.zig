@@ -42,6 +42,12 @@ pub fn getModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
     const entt = b.dependency("entt", .{});
     mod.addImport("ecs", entt.module("zig-ecs"));
 
+    mod.addCSourceFiles(
+        .{
+            .files = &.{"./c/stb_image.c"},
+        },
+    );
+
     mod.linkSystemLibrary("sdl3", .{});
 
     return mod;

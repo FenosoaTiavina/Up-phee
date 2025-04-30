@@ -1,14 +1,16 @@
 // main.zig
 const std = @import("std");
 
-const ecs = @import("ecs");
-const zgui = @import("zgui");
-
 const uph = @import("uph");
+
+const ecs = uph.ecs;
+const zgui = uph.zgui;
+const zmath = uph.zmath;
+
 const c = uph.clib;
 const Renderer = uph.Renderer;
 const shader = uph.Shader;
-const Components = @import("components/components.zig");
+const Components = uph.Components;
 
 const EventSystem = uph.Events;
 const Keys = EventSystem.keys.Keys;

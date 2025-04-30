@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const c = @import("../../imports.zig");
+const c = @import("../imports.zig");
 const EventSystem = @import("./event.zig");
 const EventTypes = @import("event_types.zig");
 const KeyEvent = EventTypes.KeyEvent;

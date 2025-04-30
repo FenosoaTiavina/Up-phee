@@ -1,9 +1,9 @@
 const std = @import("std");
-const c = @import("uph").clib;
+const c = @import("../imports.zig");
 
 const zm = @import("zmath");
 
-const T_ = @import("uph").Types;
+const T_ = @import("../types.zig");
 
 pub const CameraData = struct {
     position: T_.Vec4_f32,
