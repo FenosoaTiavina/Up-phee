@@ -1,104 +1,59 @@
 const std = @import("std");
-const Build = std.Build;
-const ResolvedTarget = std.Build.ResolvedTarget;
+const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const target = b.standardTargetOptions(.{});
 
-    // Build framework
-    const framework = buildUphFramework(b, target, optimize);
+    const uph_module = getModule(b, "uph", "uph");
 
-    // Build testbed executable
-    const testbed = buildTestbed(b, target, optimize, framework);
-
-    // Create run step
-    setupRunStep(b, testbed);
-}
-
-fn buildUphFramework(
-    b: *std.Build,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-) struct {
-    module: *std.Build.Module,
-    artifact: *std.Build.Step.Compile,
-} {
-    // Create framework module with target specified
-    const framework_module = b.createModule(.{
-        .root_source_file = b.path("src/uph/uph.zig"),
-        .target = target,
+    const testbed_module = b.createModule(.{
+        .root_source_file = b.path("src/testbed/main.zig"),
         .optimize = optimize,
-    });
-    lib_uph.root_module.addImport("zmath", zmath.module("root"));
-
-    // Add external dependencies
-    const zmath = b.dependency("zmath", .{
         .target = target,
-        .optimize = optimize,
-    });
-    framework_module.addImport("zmath", zmath.module("root"));
-
-    const zgui = b.dependency("zgui", .{
-        .target = target,
-        .backend = .sdl3_gpu,
-    });
-    framework_module.addImport("zgui", zgui.module("root"));
-
-    const entt = b.dependency("entt", .{});
-    framework_module.addImport("ecs", entt.module("zig-ecs"));
-
-    // Build shared library
-    const lib = b.addSharedLibrary(.{
-        .name = "uph",
-        .root_source_file = b.path("src/uph/uph.zig"),
-        .target = target,
-        .optimize = optimize,
     });
 
-    lib.root_module = framework_module;
-    lib.linkSystemLibrary("sdl3");
-    lib.linkSystemLibrary("c");
-    lib.addCSourceFiles(.{
-        .files = &.{"c/stb_image.c"},
-    });
-
-    b.installArtifact(lib);
-
-    return .{
-        .module = framework_module,
-        .artifact = lib,
-    };
-}
-
-fn buildTestbed(
-    b: *std.Build,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    framework: anytype,
-) *std.Build.Step.Compile {
     const exe = b.addExecutable(.{
         .name = "testbed",
-        .root_source_file = b.path("src/testbed/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = testbed_module,
     });
-
-    // Add framework dependency
-    exe.root_module.addImport("uph", framework.module);
-    exe.linkLibrary(framework.artifact);
-
-    b.installArtifact(exe);
-    return exe;
+    exe.root_module.addImport("uph", uph_module);
 }
 
-fn setupRunStep(
-    b: *std.Build,
-    testbed: *std.Build.Step.Compile,
-) void {
-    const run_cmd = b.addRunArtifact(testbed);
-    run_cmd.step.dependOn(b.getInstallStep());
+pub const LibType = enum(i32) {
+    static,
+    dynamic, // requires DYLD_LIBRARY_PATH to point to the dylib path
+    exe_compiled,
+};
 
-    const run_step = b.step("run", "Run the application");
-    run_step.dependOn(&run_cmd.step);
+pub fn getModule(b: *std.Build, comptime mod_name: []const u8, comptime _namespace: []const u8) *std.Build.Module {
+    return b.addModule(.{
+        .root_source_file = b.path("src/" ++ _namespace ++ "/uph.zig"),
+        .target = b.standardTargetOptions(.{}),
+        .optimize = b.standardOptimizeOption(.{}),
+        .name = mod_name,
+    });
+}
+
+/// prefix_path is used to add package paths. It should be the the same path used to include this build file
+pub fn linkArtifact(b: *std.Build, artifact: *std.Build.Step.Compile, lib_type: LibType, comptime name: []const u8, comptime namespace: []const u8) void {
+    const optimize = b.standardOptimizeOption(.{});
+    const target = b.standardTargetOptions(.{});
+    switch (lib_type) {
+        .static => {
+            const lib = b.addStaticLibrary(.{ .name = "uph", .root_source_file = "uph.zig", .optimize = optimize, .target = target });
+            b.installArtifact(lib);
+
+            artifact.linkLibrary(lib);
+        },
+        .dynamic => {
+            const lib = b.addSharedLibrary(.{ .name = "uph", .root_source_file = "uph.zig", .optimize = optimize, .target = target });
+            b.installArtifact(lib);
+
+            artifact.linkLibrary(lib);
+        },
+        else => {},
+    }
+
+    artifact.root_module.addImport("uph", getModule(name, namespace));
 }
