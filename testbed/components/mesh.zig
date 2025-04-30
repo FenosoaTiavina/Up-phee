@@ -1,11 +1,11 @@
 const std = @import("std");
 
-const T_ = @import("../uph/types.zig");
+const T_ = @import("uph").Types;
 
-const c = @import("../uph/imports.zig");
-const rd = @import("../uph/renderer.zig");
+const c = @import("uph").clib;
+const rd = @import("uph").Renderer;
 
-const components = @import("../components.zig");
+const components = @import("./components.zig");
 
 pub const Vertex = struct {
     position: T_.Vec3_f32,

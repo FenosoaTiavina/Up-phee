@@ -1,7 +1,7 @@
 const zm = @import("zmath");
 
 const ecs = @import("ecs");
-const T_ = @import("../types.zig");
+const T_ = @import("uph").Types;
 
 pub const Transform = struct {
     position: T_.Vec4_f32,
