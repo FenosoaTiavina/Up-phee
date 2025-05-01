@@ -7,18 +7,18 @@ pub const Window = struct {
     window_dimension: T_.Size,
     window_title: [*c]const u8,
 
-    pub fn init(window_width: u32, window_height: u32, window_title: [*c]const u8) !Window {
+    pub fn init(size: T_.Size, window_title: [*c]const u8) !Window {
         if (!c.sdl.SDL_Init(c.sdl.SDL_INIT_VIDEO)) {
             return error.SDLInitFailed;
         }
 
-        const window = c.sdl.SDL_CreateWindow(window_title, @intCast(window_width), @intCast(window_height), c.sdl.SDL_WINDOW_VULKAN | c.sdl.SDL_WINDOW_RESIZABLE) orelse {
+        const window = c.sdl.SDL_CreateWindow(window_title, @intCast(size.width), @intCast(size.height), c.sdl.SDL_WINDOW_VULKAN | c.sdl.SDL_WINDOW_RESIZABLE) orelse {
             return error.WindowCreationFailed;
         };
 
         return Window{
             .sdl_window = window,
-            .window_dimension = T_.Vec2_usize{ @intCast(window_width), @intCast(window_height) },
+            .window_dimension = size,
             .window_title = window_title,
         };
     }

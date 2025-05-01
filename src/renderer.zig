@@ -12,7 +12,7 @@ const components = @import("./components/components.zig");
 
 pub const Renderer = struct {
     allocator: std.mem.Allocator,
-    window: Window,
+    window: *Window,
     device: ?*c.sdl.SDL_GPUDevice,
     default_sampler: ?*c.sdl.SDL_GPUSampler,
     transfer_buffer: ?*c.sdl.SDL_GPUTransferBuffer,
@@ -21,7 +21,13 @@ pub const Renderer = struct {
     pipelines: std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline),
 
     pub fn init(allocator: std.mem.Allocator, width: u32, height: u32, title: [*c]const u8) !Renderer {
-        const window = try Window.init(width, height, title);
+        const window = try Window.init(
+            T_.Size{
+                .width = width,
+                .height = height,
+            },
+            title,
+        );
         const device = c.sdl.SDL_CreateGPUDevice(c.sdl.SDL_GPU_SHADERFORMAT_SPIRV, true, null) orelse return error.DeviceCreationFailed;
         if (!c.sdl.SDL_ClaimWindowForGPUDevice(device, window.sdl_window)) return error.WindowClaimFailed;
 
@@ -42,7 +48,7 @@ pub const Renderer = struct {
 
         return Renderer{
             .allocator = allocator,
-            .window = window,
+            .window = @constCast(&window),
             .device = device,
             .default_sampler = sampler,
             .command_buffers = std.ArrayList(*c.sdl.SDL_GPUCommandBuffer).init(allocator),
@@ -81,7 +87,7 @@ pub const Renderer = struct {
         self.*.window.set_size(size);
     }
 
-    pub fn beginFrame(self: *Renderer) !void {
+    pub fn beginDraw(self: *Renderer) !void {
         const command_buffer = c.sdl.SDL_AcquireGPUCommandBuffer(self.device) orelse {
             return error.CommandBufferAcquisitionFailed;
         };
@@ -124,7 +130,7 @@ pub const Renderer = struct {
         }
     }
 
-    pub fn render(self: *Renderer, registry: *ecs.Registry, active_camera_entity: ecs.Entity) !void {
+    pub fn draw(self: *Renderer, registry: *ecs.Registry, active_camera_entity: ecs.Entity) !void {
         const cmd = self.command_buffers.items[0];
 
         const camera_component = registry.get(components.Camera.CameraData, active_camera_entity);
@@ -171,7 +177,7 @@ pub const Renderer = struct {
         zgui.backend.renderDrawData(cmd, self.render_pass.?, null);
     }
 
-    pub fn endFrame(self: *Renderer) !void {
+    pub fn endDraw(self: *Renderer) !void {
         c.sdl.SDL_EndGPURenderPass(self.*.render_pass);
 
         for (self.command_buffers.items) |cmd_buf| {

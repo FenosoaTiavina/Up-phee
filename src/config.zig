@@ -95,9 +95,7 @@ pub fn init(comptime game: anytype) Config {
     const options = [_]struct { name: []const u8, desc: []const u8 }{
         .{ .name = "uph_log_level", .desc = "logging level" },
         .{ .name = "uph_fps_limit", .desc = "fps limit setting" },
-        .{ .name = "uph_enable_physfs", .desc = "whether use physfs to access game assets" },
         .{ .name = "uph_canvas_size", .desc = "size of canvas" },
-        .{ .name = "uph_enable_post_processing", .desc = "whether enable post-processing facility" },
         .{ .name = "uph_headless", .desc = "headless mode" },
         .{ .name = "uph_window_title", .desc = "title of window" },
         .{ .name = "uph_window_size", .desc = "size of window" },

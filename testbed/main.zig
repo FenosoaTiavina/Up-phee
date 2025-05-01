@@ -325,9 +325,9 @@ pub fn main() !void {
         // The SDL3+GPU backend requires calling zgui.backend.render() before rendering ImGui
 
         zgui.backend.render();
-        try game_renderer.beginFrame();
-        try game_renderer.render(&registry, camera_entity);
-        try game_renderer.endFrame();
+        try game_renderer.beginDraw();
+        try game_renderer.draw(&registry, camera_entity);
+        try game_renderer.endDraw();
     }
 
     registry.deinit();
