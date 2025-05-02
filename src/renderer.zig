@@ -147,6 +147,10 @@ pub const Renderer = struct {
         }
     }
 
+    pub fn getSwapchainTextureFormat(self: *Renderer) c.sdl.SDL_GPUTextureFormat {
+        return c.sdl.SDL_GetGPUSwapchainTextureFormat(self.device, self.window.sdl_window);
+    }
+
     pub fn render(self: *Renderer, registry: *ecs.Registry, active_camera_entity: ecs.Entity) !void {
         const cmd = self.command_buffers.items[0];
 

@@ -112,7 +112,7 @@ pub fn main() !void {
 
     zgui.backend.init(game_renderer.window.sdl_window, .{
         .device = game_renderer.device,
-        .color_target_format = c.sdl.SDL_GetGPUSwapchainTextureFormat(game_renderer.device, game_renderer.window.sdl_window),
+        .color_target_format = game_renderer.getSwapchainTextureFormat(),
         .msaa_samples = c.sdl.SDL_GPU_SAMPLECOUNT_1,
     });
 
