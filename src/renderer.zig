@@ -2,16 +2,43 @@ const std = @import("std");
 
 const ecs = @import("ecs");
 const zm = @import("zmath");
+const zgui = @import("zgui");
 
 const T_ = @import("types.zig");
 const c = @import("imports.zig");
 const shader = @import("shader.zig");
-const Window = @import("window.zig").Window;
 const components = @import("./components/components.zig");
+
+pub const Window = struct {
+    sdl_window: *c.sdl.SDL_Window,
+    window_dimension: T_.Vec2_usize,
+    window_title: [*c]const u8,
+
+    pub fn init(window_width: u32, window_height: u32, window_title: [*c]const u8) !Window {
+        if (!c.sdl.SDL_Init(c.sdl.SDL_INIT_VIDEO)) {
+            return error.SDLInitFailed;
+        }
+
+        const window = c.sdl.SDL_CreateWindow(window_title, @intCast(window_width), @intCast(window_height), c.sdl.SDL_WINDOW_VULKAN | c.sdl.SDL_WINDOW_RESIZABLE) orelse {
+            return error.WindowCreationFailed;
+        };
+
+        return Window{
+            .sdl_window = window,
+            .window_dimension = T_.Vec2_usize{ @intCast(window_width), @intCast(window_height) },
+            .window_title = window_title,
+        };
+    }
+
+    pub fn deinit(self: *Window) void {
+        c.sdl.SDL_DestroyWindow(self.sdl_window);
+        c.sdl.SDL_Quit();
+    }
+};
 
 pub const Renderer = struct {
     allocator: std.mem.Allocator,
-    window: *Window,
+    window: Window,
     device: *c.sdl.SDL_GPUDevice,
     default_sampler: ?*c.sdl.SDL_GPUSampler,
     transfer_buffer: ?*c.sdl.SDL_GPUTransferBuffer,
@@ -20,16 +47,8 @@ pub const Renderer = struct {
     pipelines: std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline),
 
     pub fn init(allocator: std.mem.Allocator, width: u32, height: u32, title: [*c]const u8) !Renderer {
-        const window = try Window.init(
-            T_.Size{
-                .width = width,
-                .height = height,
-            },
-            title,
-        );
-
+        const window = try Window.init(width, height, title);
         const device = c.sdl.SDL_CreateGPUDevice(c.sdl.SDL_GPU_SHADERFORMAT_SPIRV, true, null) orelse return error.DeviceCreationFailed;
-
         if (!c.sdl.SDL_ClaimWindowForGPUDevice(device, window.sdl_window)) return error.WindowClaimFailed;
 
         _ = c.sdl.SDL_SetGPUSwapchainParameters(device, window.sdl_window, c.sdl.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.sdl.SDL_GPU_PRESENTMODE_MAILBOX);
@@ -49,7 +68,7 @@ pub const Renderer = struct {
 
         return Renderer{
             .allocator = allocator,
-            .window = @constCast(&window),
+            .window = window,
             .device = device,
             .default_sampler = sampler,
             .command_buffers = std.ArrayList(*c.sdl.SDL_GPUCommandBuffer).init(allocator),
@@ -78,19 +97,14 @@ pub const Renderer = struct {
         self.window.deinit();
     }
 
-    pub fn getSwapchainFormat(self: *Renderer) c.sdl.SDL_GPUTextureFormat {
-        return c.sdl.SDL_GetGPUSwapchainTextureFormat(self.*.device, self.*.window.sdl_window);
-    }
-
     pub fn getAspectRatio(self: *Renderer) f32 {
-        return self.window.getAspectRatio();
+        var w: c_int = 0;
+        var h: c_int = 0;
+        _ = c.sdl.SDL_GetWindowSize(self.*.window.sdl_window, &w, &h);
+        return @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(h));
     }
 
-    pub fn setWindowSize(self: *Renderer, size: T_.Size) void {
-        self.*.window.set_size(size);
-    }
-
-    pub fn beginDraw(self: *Renderer) !void {
+    pub fn beginFrame(self: *Renderer) !void {
         const command_buffer = c.sdl.SDL_AcquireGPUCommandBuffer(self.device) orelse {
             return error.CommandBufferAcquisitionFailed;
         };
@@ -118,6 +132,8 @@ pub const Renderer = struct {
             .store_op = c.sdl.SDL_GPU_STOREOP_STORE,
         };
 
+        zgui.backend.prepareDrawData(@ptrCast(command_buffer));
+
         const render_pass = c.sdl.SDL_BeginGPURenderPass(command_buffer, &color_target_info, 1, null) orelse {
             return error.RenderPassCreationFailed;
         };
@@ -131,7 +147,7 @@ pub const Renderer = struct {
         }
     }
 
-    pub fn draw(self: *Renderer, registry: *ecs.Registry, active_camera_entity: ecs.Entity) !void {
+    pub fn render(self: *Renderer, registry: *ecs.Registry, active_camera_entity: ecs.Entity) !void {
         const cmd = self.command_buffers.items[0];
 
         const camera_component = registry.get(components.Camera.CameraData, active_camera_entity);
@@ -174,9 +190,11 @@ pub const Renderer = struct {
                 camera_component,
             );
         }
+
+        zgui.backend.renderDrawData(cmd, self.render_pass.?, null);
     }
 
-    pub fn endDraw(self: *Renderer) !void {
+    pub fn endFrame(self: *Renderer) !void {
         c.sdl.SDL_EndGPURenderPass(self.*.render_pass);
 
         for (self.command_buffers.items) |cmd_buf| {
@@ -209,8 +227,7 @@ pub fn createGraphicsPipeline(renderer: *Renderer, desc: GraphicsPipelineDesc) !
         .target_info = .{
             .num_color_targets = 1,
             .color_target_descriptions = &.{
-                .format = c.sdl.SDL_GPU_TEXTUREFORMAT_A8_UNORM,
-                // _ renderer.getSwapchainFormat(),
+                .format = c.sdl.SDL_GetGPUSwapchainTextureFormat(renderer.device, renderer.window.sdl_window),
             },
         },
         .primitive_type = c.sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
