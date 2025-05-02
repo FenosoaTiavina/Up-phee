@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const zgui = @import("zgui");
 
 const c = @import("../imports.zig");
@@ -43,12 +44,13 @@ pub const InputSystem = struct {
     }
 
     pub fn pollEvents(self: *Self, sdl_window: *c.sdl.SDL_Window, zgui_event: bool) !bool {
+        _ = zgui_event; // autofix
 
         // Poll SDL events
         var event: c.sdl.SDL_Event = undefined;
         while (c.sdl.SDL_PollEvent(&event)) {
-            if (zgui_event)
-                _ = zgui.backend.processEvent(&event);
+            // if (zgui_event)
+            //     _ = zgui.backend.processEvent(&event);
 
             switch (event.type) {
                 c.sdl.SDL_EVENT_QUIT => return true,

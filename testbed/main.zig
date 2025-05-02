@@ -104,20 +104,6 @@ pub fn main() !void {
     var game_renderer = try Renderer.Renderer.init(allocator, WINDOW_WIDTH, WINDOW_HEIGHT, "HEHE");
     defer game_renderer.deinit();
 
-    // Initialize zgui
-    zgui.init(allocator);
-    defer zgui.deinit();
-    //
-    zgui.getStyle().setColorsDark();
-
-    zgui.backend.init(game_renderer.window.sdl_window, .{
-        .device = game_renderer.device.?,
-        .color_target_format = c.sdl.SDL_GetGPUSwapchainTextureFormat(game_renderer.device, game_renderer.window.sdl_window),
-        .msaa_samples = c.sdl.SDL_GPU_SAMPLECOUNT_1,
-    });
-
-    defer zgui.backend.deinit();
-
     // Initialize the renderer
     // Create a camera entity
     const camera_entity = registry.create();
@@ -165,8 +151,8 @@ pub fn main() !void {
     registry.add(quad_entity, texture);
 
     try Renderer.createGraphicsPipeline(&game_renderer, .{
-        .vertex_shader = try shader.Shader.loadShader(game_renderer.device.?, "assets/shaders/compiled/PositionColor.vert.spv", c.sdl.SDL_GPU_SHADERSTAGE_VERTEX, 1, 0, 0, 0),
-        .fragment_shader = try shader.Shader.loadShader(game_renderer.device.?, "assets/shaders/compiled/SolidColor.frag.spv", c.sdl.SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 0, 1),
+        .vertex_shader = try shader.Shader.loadShader(game_renderer.device, "assets/shaders/compiled/PositionColor.vert.spv", c.sdl.SDL_GPU_SHADERSTAGE_VERTEX, 1, 0, 0, 0),
+        .fragment_shader = try shader.Shader.loadShader(game_renderer.device, "assets/shaders/compiled/SolidColor.frag.spv", c.sdl.SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 0, 1),
         .vertex_input_state = .{
             .vertex_buffer_descriptions = &c.sdl.SDL_GPUVertexBufferDescription{
                 .slot = 0,
@@ -283,48 +269,6 @@ pub fn main() !void {
 
         quit = try input_manager.pollEvents(game_renderer.window.sdl_window, true);
 
-        var fb_width: c_int = 0;
-        var fb_height: c_int = 0;
-        if (!c.sdl.SDL_GetWindowSize(game_renderer.window.sdl_window, &fb_width, &fb_height)) {
-            std.log.err("SDL_GetWindowSizeInPixels failed: {s}\n", .{c.sdl.SDL_GetError()});
-            return error.SDLGetWindowSize;
-        }
-
-        const fb_scale = c.sdl.SDL_GetWindowDisplayScale(game_renderer.window.sdl_window);
-
-        zgui.backend.newFrame(@intCast(fb_width), @intCast(fb_height), fb_scale);
-
-        // Show a simple window
-        zgui.setNextWindowPos(.{ .x = 20.0, .y = 20.0, .cond = .first_use_ever });
-        zgui.setNextWindowSize(.{ .w = -1.0, .h = -1.0, .cond = .first_use_ever });
-        if (zgui.begin("info", .{})) {
-            zgui.text("camera target :{any},{any},{any}", .{
-                registry.get(Components.Camera.CameraData, camera_entity).*.front[0],
-                registry.get(Components.Camera.CameraData, camera_entity).*.front[1],
-                registry.get(Components.Camera.CameraData, camera_entity).*.front[2],
-            });
-            zgui.text("camera front :{any},{any},{any}", .{
-                registry.get(Components.Camera.CameraData, camera_entity).*.front[0],
-                registry.get(Components.Camera.CameraData, camera_entity).*.front[1],
-                registry.get(Components.Camera.CameraData, camera_entity).*.front[2],
-            });
-
-            zgui.text("camera position :{any},{any},{any}", .{
-                registry.get(Components.Camera.CameraData, camera_entity).*.position[0],
-                registry.get(Components.Camera.CameraData, camera_entity).*.position[1],
-                registry.get(Components.Camera.CameraData, camera_entity).*.position[2],
-            });
-
-            if (zgui.button("reset Cam", .{})) {
-                cam.*.position = .{ 0, 0, -5, 1.0 }; // W component should be 1.0
-                Components.Camera.update(cam);
-            }
-        }
-        zgui.end();
-
-        // The SDL3+GPU backend requires calling zgui.backend.render() before rendering ImGui
-
-        zgui.backend.render();
         try game_renderer.beginDraw();
         try game_renderer.draw(&registry, camera_entity);
         try game_renderer.endDraw();

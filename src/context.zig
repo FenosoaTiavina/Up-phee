@@ -179,9 +179,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
             self._allocator = _allocator;
             self._ctx = self.context();
 
-            // Init main-thread id
-            _ = uph.utils.isMainThread();
-
             // Init SDL window and renderer
             self._renderer = uph.Renderer.Renderer.init(
                 self.context().allocator(),
@@ -501,15 +498,15 @@ pub fn uphContext(comptime cfg: config.Config) type {
         }
 
         /// Get SDL window
-        fn window(ptr: *anyopaque) uph.Window {
+        fn window(ptr: *anyopaque) *uph.Window {
             const self: *@This() = @ptrCast(@alignCast(ptr));
-            return self._window;
+            return &self._window;
         }
 
         /// Get SDL renderer
-        fn renderer(ptr: *anyopaque) uph.Renderer {
+        fn renderer(ptr: *anyopaque) *uph.Renderer {
             const self: *@This() = @ptrCast(@alignCast(ptr));
-            return self._renderer;
+            return &self._renderer;
         }
 
         /// Get canvas texture

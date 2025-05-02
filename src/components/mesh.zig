@@ -20,11 +20,11 @@ pub const MeshData = struct {
 };
 
 pub fn createMeshComponent(renderer: *rd.Renderer, vertices: []const Vertex, indices: []const u16) !MeshData {
-    const vertex_buffer = rd.createBuffer(renderer.device.?, c.sdl.SDL_GPU_BUFFERUSAGE_VERTEX, @intCast(@sizeOf(Vertex) * vertices.len)) orelse {
+    const vertex_buffer = rd.createBuffer(renderer.device, c.sdl.SDL_GPU_BUFFERUSAGE_VERTEX, @intCast(@sizeOf(Vertex) * vertices.len)) orelse {
         return error.VertexBufferCreationFailed;
     };
 
-    const index_buffer = rd.createBuffer(renderer.device.?, c.sdl.SDL_GPU_BUFFERUSAGE_VERTEX, @intCast(@sizeOf(u16) * indices.len)) orelse {
+    const index_buffer = rd.createBuffer(renderer.device, c.sdl.SDL_GPU_BUFFERUSAGE_VERTEX, @intCast(@sizeOf(u16) * indices.len)) orelse {
         return error.IndexBufferCreationFailed;
     };
 
@@ -37,8 +37,8 @@ pub fn createMeshComponent(renderer: *rd.Renderer, vertices: []const Vertex, ind
         return error.CopyPassCreationFailed;
     };
 
-    try rd.uploadToGPU(renderer.device.?, copy_pass, renderer.transfer_buffer.?, 0, Vertex, vertices, vertex_buffer);
-    try rd.uploadToGPU(renderer.device.?, copy_pass, renderer.transfer_buffer.?, @intCast(@sizeOf(Vertex) * vertices.len), u16, indices, index_buffer);
+    try rd.uploadToGPU(renderer.device, copy_pass, renderer.transfer_buffer.?, 0, Vertex, vertices, vertex_buffer);
+    try rd.uploadToGPU(renderer.device, copy_pass, renderer.transfer_buffer.?, @intCast(@sizeOf(Vertex) * vertices.len), u16, indices, index_buffer);
 
     c.sdl.SDL_EndGPUCopyPass(copy_pass);
     _ = c.sdl.SDL_SubmitGPUCommandBuffer(command_buffer);
@@ -98,7 +98,7 @@ pub fn createTextureComponent(renderer: *rd.Renderer, texture_path: []const u8) 
     };
 
     var pixels = image_data[0..texture_byte_size];
-    try rd.uploadTextureGPU(renderer.device.?, copy_pass, texture_transfer_buffer, texture, 0, u8, &pixels, texture_size, texture_byte_size);
+    try rd.uploadTextureGPU(renderer.device, copy_pass, texture_transfer_buffer, texture, 0, u8, &pixels, texture_size, texture_byte_size);
 
     c.sdl.SDL_EndGPUCopyPass(copy_pass);
     _ = c.sdl.SDL_SubmitGPUCommandBuffer(command_buffer);
