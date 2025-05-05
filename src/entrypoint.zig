@@ -1,21 +1,25 @@
 const std = @import("std");
-const uph = @import("uph.zig");
+const uph = @import("uph");
 const config = uph.Config;
 const game = @import("game");
 
+const compcheck = @import("./app_check.zig");
+
+comptime {
+    compcheck.doAppCheck(game);
+}
+
 // Validate game object
 
+const uph_config = config.init(game);
+
 pub fn main() !void {
-    const uph_config = config.init(game);
-    // Options for zig executable
-    const log = std.log.scoped(.uph);
+    const log = std.log.scoped(.UPH);
 
-    // Init context
-    var uph_ctx = try uph.uphContext(uph_config).create();
+    var uph_ctx = try uph.Context.uphContext(uph_config).create();
     defer uph_ctx.destroy();
-
-    // Init game object
     const ctx = uph_ctx.context();
+
     game.init(ctx) catch |err| {
         log.err("Init game failed: {}", .{err});
         if (@errorReturnTrace()) |trace| {

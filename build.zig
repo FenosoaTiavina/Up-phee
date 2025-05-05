@@ -5,34 +5,8 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
-    const uph = getModule(b, target, optimize, UphOptions{ .link_dynamic = true });
-    const lib_uph = b.addLibrary(.{ .linkage = .dynamic, .name = "uph", .root_module = uph, .version = .{
-        .major = 0,
-        .minor = 0,
-        .patch = 1,
-    } });
-
-    const install_uph = b.addInstallArtifact(
-        lib_uph,
-        .{
-            .dest_dir = .{
-                .override = .{ .bin = {} },
-            },
-        },
-    );
-
-    const exe = b.addExecutable(.{
-        .name = "testbed",
-        .root_source_file = b.path("testbed/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    exe.root_module.addImport("uph", uph);
-    b.installArtifact(exe);
-    exe.step.dependOn(&install_uph.step);
-
-    setupRunStep(b, exe);
+    const testbed = createUphApp(b, target, optimize, "testbed", "testbed/app.zig");
+    setupRunStep(b, testbed);
 }
 
 pub const UphOptions = struct {
@@ -76,6 +50,58 @@ pub fn getModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
     mod.linkSystemLibrary("sdl3", .{});
 
     return mod;
+}
+
+pub fn createUphApp(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    app_name: []const u8,
+    app_root: []const u8,
+) *std.Build.Step.Compile {
+    const uph = getModule(b, target, optimize, UphOptions{ .link_dynamic = true });
+
+    const lib_uph = b.addLibrary(.{ .linkage = .dynamic, .name = "uph", .root_module = uph, .version = .{
+        .major = 0,
+        .minor = 0,
+        .patch = 1,
+    } });
+
+    const install_uph = b.addInstallArtifact(
+        lib_uph,
+        .{
+            .dest_dir = .{
+                .override = .{ .bin = {} },
+            },
+        },
+    );
+
+    const game = b.createModule(.{
+        .root_source_file = b.path(app_root),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "uph", .module = uph },
+        },
+    });
+
+    const root = b.createModule(.{
+        .root_source_file = b.path("src/entrypoint.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "uph", .module = uph },
+            .{ .name = "game", .module = game },
+        },
+    });
+
+    const exe = b.addExecutable(.{
+        .name = app_name,
+        .root_module = root,
+    });
+    b.installArtifact(exe);
+    exe.step.dependOn(&install_uph.step);
+    return exe;
 }
 
 pub fn setupRunStep(

@@ -13,7 +13,7 @@ pub const Config = struct {
     uph_enable_physfs: bool = true,
 
     /// Canvas size (default to framebuffer's size)
-    uph_canvas_size: ?uph.Size = null,
+    uph_canvas_size: ?uph.Types.Size = null,
 
     /// Whether enable post-processing
     uph_enable_post_processing: bool = false,
@@ -24,8 +24,8 @@ pub const Config = struct {
     /// Window attributes
     uph_window_title: [:0]const u8 = "mygame",
     uph_window_size: WindowSize = .{ .custom = .{ .width = 800, .height = 600 } },
-    uph_window_min_size: ?uph.Size = null,
-    uph_window_max_size: ?uph.Size = null,
+    uph_window_min_size: ?uph.Types.Size = null,
+    uph_window_max_size: ?uph.Types.Size = null,
     uph_window_resizable: bool = false,
     uph_window_borderless: bool = false,
     uph_window_always_on_top: bool = false,

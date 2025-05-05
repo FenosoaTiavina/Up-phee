@@ -22,11 +22,11 @@ pub const Context = struct {
         realSeconds: *const fn (ctx: *anyopaque) f64,
         deltaSeconds: *const fn (ctx: *anyopaque) f32,
         fps: *const fn (ctx: *anyopaque) f32,
-        window: *const fn (ctx: *anyopaque) uph.Window,
-        renderer: *const fn (ctx: *anyopaque) uph.Renderer,
+        window: *const fn (ctx: *anyopaque) *uph.Renderer.Window,
+        renderer: *const fn (ctx: *anyopaque) *uph.Renderer.Renderer,
+        eventManager: *const fn (ctx: *anyopaque) *uph.Events.EventManager,
         kill: *const fn (ctx: *anyopaque) void,
         displayStats: *const fn (ctx: *anyopaque, opt: DisplayStats) void,
-        debugPrint: *const fn (ctx: *anyopaque, text: []const u8, opt: DebugPrint) void,
         registerPlugin: *const fn (ctx: *anyopaque, name: []const u8, path: []const u8, hotreload: bool) anyerror!void,
         unregisterPlugin: *const fn (ctx: *anyopaque, name: []const u8) anyerror!void,
         forceReloadPlugin: *const fn (ctx: *anyopaque, name: []const u8) anyerror!void,
@@ -63,12 +63,12 @@ pub const Context = struct {
     }
 
     /// Get SDL window
-    pub fn window(self: Context) uph.Window.Window {
+    pub fn window(self: Context) *uph.Renderer.Window {
         return self.vtable.window(self.ctx);
     }
 
     /// Get SDL renderer
-    pub fn renderer(self: Context) uph.Renderer.Renderer {
+    pub fn renderer(self: Context) *uph.Renderer.Renderer {
         return self.vtable.renderer(self.ctx);
     }
 
@@ -134,7 +134,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
         _running: bool = true,
 
         // Internal window
-        _window: uph.Window.Window = undefined,
+        _window: uph.Renderer.Window = undefined,
 
         // High DPI stuff
         _default_dpi: f32 = undefined,
@@ -180,7 +180,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
             self._ctx = self.context();
 
             // Init SDL window and renderer
-            self._renderer = uph.Renderer.Renderer.init(
+            self._renderer = try uph.Renderer.Renderer.init(
                 self.context().allocator(),
                 self.context().cfg().uph_window_size.custom.width,
                 self.context().cfg().uph_window_size.custom.height,
@@ -192,11 +192,8 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
             zgui.getStyle().setColorsDark();
             zgui.backend.init(self.context().window().sdl_window, .{
-                .device = self.context().renderer().device.?,
-                .color_target_format = c.sdl.SDL_GetGPUSwapchainTextureFormat(
-                    self.context().renderer().device.?,
-                    self.context().window().sdl_window,
-                ),
+                .device = self.context().renderer().device,
+                .color_target_format = self.context().renderer().getSwapchainTextureFormat(),
                 .msaa_samples = c.sdl.SDL_GPU_SAMPLECOUNT_1,
             });
 
@@ -304,8 +301,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     self._draw_cost = if (self._draw_cost > 0) (self._draw_cost + cost) / 2 else cost;
                 };
 
-                defer self._renderer.present();
-
                 const fb_scale = c.sdl.SDL_GetWindowDisplayScale(self.context().window().sdl_window);
 
                 zgui.backend.newFrame(
@@ -313,11 +308,17 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     @intCast(self.context().cfg().uph_window_size.custom.height),
                     fb_scale,
                 );
-                zgui.newFrame(self.context());
+                zgui.newFrame();
                 defer zgui.backend.render();
 
-                try self.context().renderer().beginDraw();
-                try self.context().renderer().draw(self.context());
+                self.context().renderer().beginFrame() catch |err| {
+                    log.err("Got error in `beginFrame`: {s}", .{@errorName(err)});
+                    if (@errorReturnTrace()) |trace| {
+                        std.debug.dumpStackTrace(trace.*);
+                        kill(self);
+                        return;
+                    }
+                };
 
                 drawFn(self._ctx) catch |err| {
                     log.err("Got error in `draw`: {s}", .{@errorName(err)});
@@ -327,11 +328,18 @@ pub fn uphContext(comptime cfg: config.Config) type {
                         return;
                     }
                 };
-                try self.context().renderer().endDraw();
 
-                if (bos.link_dynamic) {
-                    self._plugin_system.draw(self._ctx);
-                }
+                // if (bos.link_dynamic) {
+                //     self._plugin_system.draw(self._ctx);
+                // }
+
+                self._renderer.endFrame() catch |err| {
+                    log.err("Got error in `endFrame`: {s}", .{@errorName(err)});
+                    if (@errorReturnTrace()) |trace| {
+                        std.debug.dumpStackTrace(trace.*);
+                        kill(self);
+                    }
+                };
             }
 
             self._updateFrameStats();
@@ -349,8 +357,14 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     @as(f32, @floatFromInt(self._pc_freq));
                 self._update_cost = if (self._update_cost > 0) (self._update_cost + cost) / 2 else cost;
             };
-
-            eventFn(self._ctx, self._ev_manager);
+            eventFn(self._ctx, self._ev_manager) catch |err| {
+                log.err("Got error in `event`: {s}", .{@errorName(err)});
+                if (@errorReturnTrace()) |trace| {
+                    std.debug.dumpStackTrace(trace.*);
+                    kill(self);
+                    return;
+                }
+            };
 
             updateFn(self._ctx) catch |err| {
                 log.err("Got error in `update`: {s}", .{@errorName(err)});
@@ -449,7 +463,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     .fps = fps,
                     .window = window,
                     .renderer = renderer,
-                    .canvas = canvas,
+                    .eventManager = eventManager,
                     .kill = kill,
                     .displayStats = displayStats,
                     .registerPlugin = registerPlugin,
@@ -498,21 +512,21 @@ pub fn uphContext(comptime cfg: config.Config) type {
         }
 
         /// Get SDL window
-        fn window(ptr: *anyopaque) *uph.Window {
+        fn window(ptr: *anyopaque) *uph.Renderer.Window {
             const self: *@This() = @ptrCast(@alignCast(ptr));
             return &self._window;
         }
 
         /// Get SDL renderer
-        fn renderer(ptr: *anyopaque) *uph.Renderer {
+        fn renderer(ptr: *anyopaque) *uph.Renderer.Renderer {
             const self: *@This() = @ptrCast(@alignCast(ptr));
             return &self._renderer;
         }
 
-        /// Get canvas texture
-        fn canvas(ptr: *anyopaque) uph.Texture {
+        /// Get SDL renderer
+        fn eventManager(ptr: *anyopaque) *uph.Events.EventManager {
             const self: *@This() = @ptrCast(@alignCast(ptr));
-            return self._canvas_texture;
+            return &self._ev_manager;
         }
 
         /// Kill app
@@ -641,34 +655,42 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
         /// Register new plugin
         pub fn registerPlugin(ptr: *anyopaque, name: []const u8, path: []const u8, hotreload: bool) !void {
-            if (!bos.link_dynamic) {
-                @panic("plugin system isn't enabled!");
-            }
-            const self: *@This() = @ptrCast(@alignCast(ptr));
-            try self._plugin_system.register(
-                self.context(),
-                name,
-                path,
-                hotreload,
-            );
+            _ = ptr; // autofix
+            _ = name; // autofix
+            _ = path; // autofix
+            _ = hotreload; // autofix
+            // if (!bos.link_dynamic) {
+            //     @panic("plugin system isn't enabled!");
+            // }
+            // const self: *@This() = @ptrCast(@alignCast(ptr));
+            // try self._plugin_system.register(
+            //     self.context(),
+            //     name,
+            //     path,
+            //     hotreload,
+            // );
         }
 
         /// Unregister plugin
         pub fn unregisterPlugin(ptr: *anyopaque, name: []const u8) !void {
-            if (!bos.link_dynamic) {
-                @panic("plugin system isn't enabled!");
-            }
-            const self: *@This() = @ptrCast(@alignCast(ptr));
-            try self._plugin_system.unregister(self.context(), name);
+            _ = ptr; // autofix
+            _ = name; // autofix
+            // if (!bos.link_dynamic) {
+            //     @panic("plugin system isn't enabled!");
+            // }
+            // const self: *@This() = @ptrCast(@alignCast(ptr));
+            // try self._plugin_system.unregister(self.context(), name);
         }
 
         ///  Force reload plugin
         pub fn forceReloadPlugin(ptr: *anyopaque, name: []const u8) !void {
-            if (!bos.link_dynamic) {
-                @panic("plugin system isn't enabled!");
-            }
-            const self: *@This() = @ptrCast(@alignCast(ptr));
-            try self._plugin_system.forceReload(name);
+            _ = ptr; // autofix
+            _ = name; // autofix
+            // if (!bos.link_dynamic) {
+            //     @panic("plugin system isn't enabled!");
+            // }
+            // const self: *@This() = @ptrCast(@alignCast(ptr));
+            // try self._plugin_system.forceReload(name);
         }
     };
 }

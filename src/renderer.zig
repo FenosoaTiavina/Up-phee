@@ -194,8 +194,12 @@ pub const Renderer = struct {
                 camera_component,
             );
         }
+    }
 
+    pub fn zgui_render(self: *Renderer) !void {
+        const cmd = self.command_buffers.items[0];
         zgui.backend.renderDrawData(cmd, self.render_pass.?, null);
+        zgui.endFrame();
     }
 
     pub fn endFrame(self: *Renderer) !void {

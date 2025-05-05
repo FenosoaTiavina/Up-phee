@@ -38,6 +38,7 @@ pub const EventManager = struct {
     allocator: std.mem.Allocator,
     handlers: std.StringHashMap(HandlerData),
     delta_time: *f32,
+
     const HandlerData = struct { trigger: EventMap, individual: bool, callback: EventCallback };
 
     pub fn init(allocator: std.mem.Allocator, delta_t: *f32) !EventManager {
