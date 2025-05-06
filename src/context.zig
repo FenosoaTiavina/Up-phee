@@ -8,7 +8,6 @@ const uph = @import("uph.zig");
 const sdl = uph.clib.sdl;
 const c = uph.clib;
 const zgui = uph.zgui;
-const io = uph.Events.input.InputSystem;
 const plot = zgui.plot;
 const log = std.log.scoped(.uph);
 
@@ -24,8 +23,7 @@ pub const Context = struct {
         fps: *const fn (ctx: *anyopaque) f32,
         window: *const fn (ctx: *anyopaque) *uph.Renderer.Window,
         renderer: *const fn (ctx: *anyopaque) *uph.Renderer.Renderer,
-        eventManager: *const fn (ctx: *anyopaque) *uph.Events.EventManager,
-        kill: *const fn (ctx: *anyopaque) void,
+        kill: *const fn (ctx: *anyopaque, bool) void,
         displayStats: *const fn (ctx: *anyopaque, opt: DisplayStats) void,
         registerPlugin: *const fn (ctx: *anyopaque, name: []const u8, path: []const u8, hotreload: bool) anyerror!void,
         unregisterPlugin: *const fn (ctx: *anyopaque, name: []const u8) anyerror!void,
@@ -68,13 +66,17 @@ pub const Context = struct {
     }
 
     /// Get SDL renderer
+    pub fn eventManger(self: Context) *uph.Events.EventManager {
+        return self.vtable.eventManager(self.ctx);
+    }
+
     pub fn renderer(self: Context) *uph.Renderer.Renderer {
         return self.vtable.renderer(self.ctx);
     }
 
     /// Kill application
-    pub fn kill(self: Context) void {
-        return self.vtable.kill(self.ctx);
+    pub fn kill(self: Context, b: bool) void {
+        return self.vtable.kill(self.ctx, b);
     }
 
     /// Get size of canvas
@@ -135,16 +137,13 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
         // Internal window
         _window: uph.Renderer.Window = undefined,
+        // Renderer instance
+        _renderer: uph.Renderer.Renderer = undefined,
+        _aspect_ratio: f32 = undefined,
 
         // High DPI stuff
         _default_dpi: f32 = undefined,
         _display_dpi: f32 = undefined,
-
-        // Renderer instance
-        _renderer: uph.Renderer.Renderer = undefined,
-
-        // Event Manager
-        _ev_manager: uph.Events.EventManager = undefined,
 
         // Elapsed time of game
         _seconds: f32 = 0,
@@ -188,14 +187,14 @@ pub fn uphContext(comptime cfg: config.Config) type {
             );
 
             // Init imgui
-            zgui.init(self.context().allocator());
-
-            zgui.getStyle().setColorsDark();
-            zgui.backend.init(self.context().window().sdl_window, .{
-                .device = self.context().renderer().device,
-                .color_target_format = self.context().renderer().getSwapchainTextureFormat(),
-                .msaa_samples = c.sdl.SDL_GPU_SAMPLECOUNT_1,
-            });
+            // zgui.init(self.context().allocator());
+            //
+            // zgui.getStyle().setColorsDark();
+            // zgui.backend.init(self.context().window().sdl_window, .{
+            //     .device = self.context().renderer().device,
+            //     .color_target_format = self.context().renderer().getSwapchainTextureFormat(),
+            //     .msaa_samples = c.sdl.SDL_GPU_SAMPLECOUNT_1,
+            // });
 
             // Init plugin system
             // if (bos.link_dynamic) {
@@ -217,8 +216,8 @@ pub fn uphContext(comptime cfg: config.Config) type {
             // }
 
             // Destroy imgui
-            zgui.backend.deinit();
-            zgui.deinit();
+            // zgui.backend.deinit();
+            // zgui.deinit();
 
             // Destroy window and renderer
             self._renderer.deinit();
@@ -235,7 +234,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
         /// Ticking of application
         pub fn tick(
             self: *@This(),
-            comptime eventFn: *const fn (Context, uph.Events.EventManager) anyerror!void,
+            comptime eventFn: *const fn (Context, uph.Input.Event) anyerror!void,
             comptime updateFn: *const fn (Context) anyerror!void,
             comptime drawFn: *const fn (Context) anyerror!void,
         ) void {
@@ -293,7 +292,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
             }
 
             // Do rendering
-            {
+            if (self._renderer.pipelines.count() > 0) {
                 const pc_begin = sdl.SDL_GetPerformanceCounter();
                 defer if (cfg.uph_detailed_frame_stats) {
                     const cost = @as(f32, @floatFromInt((sdl.SDL_GetPerformanceCounter() - pc_begin) * 1000)) /
@@ -301,21 +300,20 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     self._draw_cost = if (self._draw_cost > 0) (self._draw_cost + cost) / 2 else cost;
                 };
 
-                const fb_scale = c.sdl.SDL_GetWindowDisplayScale(self.context().window().sdl_window);
+                // const fb_scale = c.sdl.SDL_GetWindowDisplayScale(self.context().window().sdl_window);
 
-                zgui.backend.newFrame(
-                    @intCast(self.context().cfg().uph_window_size.custom.width),
-                    @intCast(self.context().cfg().uph_window_size.custom.height),
-                    fb_scale,
-                );
-                zgui.newFrame();
-                defer zgui.backend.render();
+                // zgui.backend.newFrame(
+                //     @intCast(self.context().cfg().uph_window_size.custom.width),
+                //     @intCast(self.context().cfg().uph_window_size.custom.height),
+                //     fb_scale,
+                // );
+                // zgui.newFrame();
 
                 self.context().renderer().beginFrame() catch |err| {
                     log.err("Got error in `beginFrame`: {s}", .{@errorName(err)});
                     if (@errorReturnTrace()) |trace| {
                         std.debug.dumpStackTrace(trace.*);
-                        kill(self);
+                        kill(self, true);
                         return;
                     }
                 };
@@ -324,11 +322,12 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     log.err("Got error in `draw`: {s}", .{@errorName(err)});
                     if (@errorReturnTrace()) |trace| {
                         std.debug.dumpStackTrace(trace.*);
-                        kill(self);
+                        kill(self, true);
                         return;
                     }
                 };
 
+                // zgui.backend.render();
                 // if (bos.link_dynamic) {
                 //     self._plugin_system.draw(self._ctx);
                 // }
@@ -337,7 +336,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     log.err("Got error in `endFrame`: {s}", .{@errorName(err)});
                     if (@errorReturnTrace()) |trace| {
                         std.debug.dumpStackTrace(trace.*);
-                        kill(self);
+                        kill(self, true);
                     }
                 };
             }
@@ -348,7 +347,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
         /// Update game state
         inline fn _update(
             self: *@This(),
-            comptime eventFn: *const fn (Context, uph.Events.EventManager) anyerror!void,
+            comptime eventFn: *const fn (Context, uph.Input.Event) anyerror!void,
             comptime updateFn: *const fn (Context) anyerror!void,
         ) void {
             const pc_begin = sdl.SDL_GetPerformanceCounter();
@@ -357,20 +356,30 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     @as(f32, @floatFromInt(self._pc_freq));
                 self._update_cost = if (self._update_cost > 0) (self._update_cost + cost) / 2 else cost;
             };
-            eventFn(self._ctx, self._ev_manager) catch |err| {
-                log.err("Got error in `event`: {s}", .{@errorName(err)});
-                if (@errorReturnTrace()) |trace| {
-                    std.debug.dumpStackTrace(trace.*);
-                    kill(self);
-                    return;
-                }
-            };
+            while (uph.Input.pollNativeEvent()) |ne| {
+
+                // Game event processing
+                const we = uph.Input.Event.from(ne);
+
+                // Passed to game code
+                eventFn(self._ctx, we) catch |err| {
+                    log.err("Got error in `event`: {s}", .{@errorName(err)});
+                    if (@errorReturnTrace()) |trace| {
+                        std.debug.dumpStackTrace(trace.*);
+                        kill(self, true);
+                        return;
+                    }
+                };
+                // if (bos.link_dynamic) {
+                //     self._plugin_system.event(self._ctx, we);
+                // }
+            }
 
             updateFn(self._ctx) catch |err| {
                 log.err("Got error in `update`: {s}", .{@errorName(err)});
                 if (@errorReturnTrace()) |trace| {
                     std.debug.dumpStackTrace(trace.*);
-                    kill(self);
+                    kill(self, true);
                     return;
                 }
             };
@@ -463,7 +472,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     .fps = fps,
                     .window = window,
                     .renderer = renderer,
-                    .eventManager = eventManager,
                     .kill = kill,
                     .displayStats = displayStats,
                     .registerPlugin = registerPlugin,
@@ -511,28 +519,22 @@ pub fn uphContext(comptime cfg: config.Config) type {
             return self._fps;
         }
 
-        /// Get SDL window
+        /// Get window
         fn window(ptr: *anyopaque) *uph.Renderer.Window {
             const self: *@This() = @ptrCast(@alignCast(ptr));
             return &self._window;
         }
 
-        /// Get SDL renderer
+        /// Get renderer
         fn renderer(ptr: *anyopaque) *uph.Renderer.Renderer {
             const self: *@This() = @ptrCast(@alignCast(ptr));
             return &self._renderer;
         }
 
-        /// Get SDL renderer
-        fn eventManager(ptr: *anyopaque) *uph.Events.EventManager {
-            const self: *@This() = @ptrCast(@alignCast(ptr));
-            return &self._ev_manager;
-        }
-
         /// Kill app
-        fn kill(ptr: *anyopaque) void {
+        fn kill(ptr: *anyopaque, b: bool) void {
             const self: *@This() = @ptrCast(@alignCast(ptr));
-            self._running = false;
+            self._running = b;
         }
 
         /// Display frame statistics

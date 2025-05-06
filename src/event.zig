@@ -1,15 +1,5 @@
 const std = @import("std");
-pub const keys = @import("keys.zig");
 pub const input = @import("input.zig");
-pub const EventTypes = @import("event_types.zig");
-
-// Re-export all the event types
-pub const KeyEvent = EventTypes.KeyEvent;
-pub const EventMap = EventTypes.EventMap;
-pub const MouseEvent = EventTypes.MouseEvent;
-pub const SystemEvent = EventTypes.SystemEvent;
-pub const EventData = EventTypes.EventData;
-pub const Event = EventTypes.Event;
 
 pub fn createEvent(name: []u8, data: EventData) Event {
     return EventTypes.createEvent(name, data);

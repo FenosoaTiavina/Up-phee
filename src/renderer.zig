@@ -11,7 +11,7 @@ const components = @import("./components/components.zig");
 
 pub const Window = struct {
     sdl_window: *c.sdl.SDL_Window,
-    window_dimension: T_.Vec2_usize,
+    window_dimension: T_.Size,
     window_title: [*c]const u8,
 
     pub fn init(window_width: u32, window_height: u32, window_title: [*c]const u8) !Window {
@@ -25,7 +25,7 @@ pub const Window = struct {
 
         return Window{
             .sdl_window = window,
-            .window_dimension = T_.Vec2_usize{ @intCast(window_width), @intCast(window_height) },
+            .window_dimension = T_.Size{ .width = @intCast(window_width), .height = @intCast(window_height) },
             .window_title = window_title,
         };
     }
@@ -44,7 +44,7 @@ pub const Renderer = struct {
     transfer_buffer: ?*c.sdl.SDL_GPUTransferBuffer,
     command_buffers: std.ArrayList(*c.sdl.SDL_GPUCommandBuffer),
     render_pass: ?*c.sdl.SDL_GPURenderPass = null,
-    pipelines: std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline),
+    pipelines: std.StringHashMap(*c.sdl.SDL_GPUGraphicsPipeline),
 
     pub fn init(allocator: std.mem.Allocator, width: u32, height: u32, title: [*c]const u8) !Renderer {
         const window = try Window.init(width, height, title);
@@ -73,7 +73,7 @@ pub const Renderer = struct {
             .default_sampler = sampler,
             .command_buffers = std.ArrayList(*c.sdl.SDL_GPUCommandBuffer).init(allocator),
             .transfer_buffer = transfer,
-            .pipelines = std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline).init(allocator),
+            .pipelines = std.StringHashMap(*c.sdl.SDL_GPUGraphicsPipeline).init(allocator),
         };
     }
 
@@ -132,7 +132,7 @@ pub const Renderer = struct {
             .store_op = c.sdl.SDL_GPU_STOREOP_STORE,
         };
 
-        zgui.backend.prepareDrawData(@ptrCast(command_buffer));
+        // zgui.backend.prepareDrawData(@ptrCast(command_buffer));
 
         const render_pass = c.sdl.SDL_BeginGPURenderPass(command_buffer, &color_target_info, 1, null) orelse {
             return error.RenderPassCreationFailed;
@@ -197,9 +197,10 @@ pub const Renderer = struct {
     }
 
     pub fn zgui_render(self: *Renderer) !void {
-        const cmd = self.command_buffers.items[0];
-        zgui.backend.renderDrawData(cmd, self.render_pass.?, null);
-        zgui.endFrame();
+        _ = self; // autofix
+        // const cmd = self.command_buffers.items[0];
+        // zgui.backend.renderDrawData(cmd, self.render_pass.?, null);
+        // zgui.endFrame();
     }
 
     pub fn endFrame(self: *Renderer) !void {
@@ -214,6 +215,7 @@ pub const Renderer = struct {
 };
 
 const GraphicsPipelineDesc = struct {
+    pipeline_name: []const u8,
     vertex_shader: shader.Shader,
     fragment_shader: shader.Shader,
     vertex_input_state: c.sdl.SDL_GPUVertexInputState,
@@ -245,8 +247,7 @@ pub fn createGraphicsPipeline(renderer: *Renderer, desc: GraphicsPipelineDesc) !
     };
 
     const pipeline = c.sdl.SDL_CreateGPUGraphicsPipeline(renderer.device, &pipeline_info) orelse return error.PipelineCreationFailed;
-    const id: u32 = std.hash.uint32(@intCast(@intFromPtr(pipeline)));
-    try renderer.pipelines.put(id, pipeline);
+    try renderer.pipelines.put(desc.pipeline_name, pipeline);
 }
 
 pub fn createBuffer(
