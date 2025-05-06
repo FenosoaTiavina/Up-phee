@@ -195,6 +195,9 @@ pub fn uphContext(comptime cfg: config.Config) type {
             //     .color_target_format = self.context().renderer().getSwapchainTextureFormat(),
             //     .msaa_samples = c.sdl.SDL_GPU_SAMPLECOUNT_1,
             // });
+            //
+            // Initialize i/o context
+            uph.Input.init(self._ctx);
 
             // Init plugin system
             // if (bos.link_dynamic) {
@@ -225,6 +228,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
             // Destory self
             self._allocator.destroy(self);
 
+            log.debug("Kitten Bye!!", .{});
             // Check memory leak if possible
             if (cfg.uph_check_memory_leak) {
                 _ = debug_allocator.deinit();
@@ -534,7 +538,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
         /// Kill app
         fn kill(ptr: *anyopaque, b: bool) void {
             const self: *@This() = @ptrCast(@alignCast(ptr));
-            self._running = b;
+            self._running = !b;
         }
 
         /// Display frame statistics

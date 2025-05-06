@@ -27,10 +27,11 @@ pub fn main() !void {
             std.process.abort();
         }
     };
-    defer game.quit(ctx);
 
     // Start game loop
     while (uph_ctx._running) {
         uph_ctx.tick(game.event, game.update, game.draw);
     }
+    game.quit(ctx);
+    uph_ctx.destroy();
 }

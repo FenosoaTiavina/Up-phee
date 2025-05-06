@@ -474,6 +474,38 @@ pub const UserEvent = struct {
     }
 };
 
+fn printEvent(event: sdl.SDL_Event) void {
+    switch (event.type) {
+        sdl.SDL_EVENT_QUIT => std.log.info("Event: SDL_EVENT_QUIT", .{}),
+        sdl.SDL_EVENT_KEY_DOWN => {
+            const key_name = sdl.SDL_GetKeyName(event.key.key);
+            std.log.info("Event: SDL_EVENT_KEY_DOWN - Key: {s} (code: {d})", .{ key_name, event.key.key });
+        },
+        sdl.SDL_EVENT_KEY_UP => {
+            const key_name = sdl.SDL_GetKeyName(event.key.key);
+            std.log.info("Event: SDL_EVENT_KEY_UP - Key: {s} (code: {d})", .{ key_name, event.key.key });
+        },
+        sdl.SDL_EVENT_MOUSE_MOTION => std.log.info("Event: SDL_EVENT_MOUSEMOTION - X: {d}, Y: {d}", .{ event.motion.x, event.motion.y }),
+        sdl.SDL_EVENT_MOUSE_BUTTON_DOWN => std.log.info("Event: SDL_EVENT_MOUSEBUTTONDOWN - Button: {d}", .{event.button.button}),
+        sdl.SDL_EVENT_MOUSE_BUTTON_UP => std.log.info("Event: SDL_EVENT_MOUSEBUTTONUP - Button: {d}", .{event.button.button}),
+        sdl.SDL_EVENT_WINDOW_SHOWN => std.log.info("Event: Window {s}", .{"SHOWN"}),
+        sdl.SDL_EVENT_WINDOW_HIDDEN => std.log.info("Event: Window {s}", .{"HIDDEN"}),
+        sdl.SDL_EVENT_WINDOW_EXPOSED => std.log.info("Event: Window {s}", .{"EXPOSED"}),
+        sdl.SDL_EVENT_WINDOW_MOVED => std.log.info("Event: Window {s}", .{"MOVED"}),
+        sdl.SDL_EVENT_WINDOW_RESIZED => std.log.info("Event: Window {s}", .{"RESIZED"}),
+        sdl.SDL_EVENT_WINDOW_MINIMIZED => std.log.info("Event: Window {s}", .{"MINIMIZED"}),
+        sdl.SDL_EVENT_WINDOW_MAXIMIZED => std.log.info("Event: Window {s}", .{"MAXIMIZED"}),
+        sdl.SDL_EVENT_WINDOW_RESTORED => std.log.info("Event: Window {s}", .{"RESTORED"}),
+        sdl.SDL_EVENT_WINDOW_MOUSE_ENTER => std.log.info("Event: Window {s}", .{"ENTER"}),
+        sdl.SDL_EVENT_WINDOW_MOUSE_LEAVE => std.log.info("Event: Window {s}", .{"LEAVE"}),
+        sdl.SDL_EVENT_WINDOW_FOCUS_GAINED => std.log.info("Event: Window {s}", .{"FOCUS_GAINED"}),
+        sdl.SDL_EVENT_WINDOW_FOCUS_LOST => std.log.info("Event: Window {s}", .{"FOCUS_LOST"}),
+        sdl.SDL_EVENT_WINDOW_CLOSE_REQUESTED => std.log.info("Event: Window {s}", .{"CLOSE REQUESTED"}),
+        sdl.SDL_EVENT_WINDOW_HIT_TEST => std.log.info("Event: Window {s}", .{"HIT_TEST"}),
+        else => std.log.info("Event: Unknown event type {d}", .{event.type}),
+    }
+}
+
 pub const Event = union(enum) {
     pub const CommonEvent = sdl.SDL_CommonEvent;
     pub const DisplayEvent = sdl.SDL_DisplayEvent;
@@ -487,6 +519,7 @@ pub const Event = union(enum) {
     pub const QuitEvent = sdl.SDL_QuitEvent;
     pub const TouchFingerEvent = sdl.SDL_TouchFingerEvent;
     pub const DropEvent = sdl.SDL_DropEvent;
+    pub const UnkownEvent = void;
 
     clip_board_update: CommonEvent,
     app_did_enter_background: CommonEvent,
@@ -534,6 +567,7 @@ pub const Event = union(enum) {
     drop_begin: DropEvent,
     drop_complete: DropEvent,
     user: UserEvent,
+    unkown: UnkownEvent,
 
     pub fn from(raw: sdl.SDL_Event) Event {
         return switch (raw.type) {
@@ -600,8 +634,8 @@ pub const Event = union(enum) {
             sdl.SDL_EVENT_SENSOR_UPDATE => Event{ .sensor_update = raw.sensor },
             sdl.SDL_EVENT_RENDER_TARGETS_RESET => Event{ .render_targets_reset = raw.common },
             sdl.SDL_EVENT_RENDER_DEVICE_RESET => Event{ .render_device_reset = raw.common },
-            else => |t| if (t >= sdl.SDL_EVENT_USER)
-                Event{ .user = UserEvent.from(raw.user) },
+            sdl.SDL_EVENT_USER => Event{ .user = UserEvent.from(raw.user) },
+            else => Event{ .unkown = {} },
         };
     }
 };
@@ -1314,7 +1348,7 @@ pub const GameController = struct {
 
 var ctx: uph.Context.Context = undefined;
 
-pub fn init(_ctx: uph.Context) void {
+pub fn init(_ctx: uph.Context.Context) void {
     ctx = _ctx;
 }
 
@@ -1331,7 +1365,7 @@ inline fn getCanvasScale() f32 {
 }
 
 inline fn mapPositionToCanvas(pos: uph.Types.Point) uph.Types.Point {
-    const canvas_size = ctx.window().window_dimension;
+    const canvas_size = ctx.window().getSize();
     const canvas_area = uph.Types.Rectangle{
         .height = @floatFromInt(canvas_size.height),
         .width = @floatFromInt(canvas_size.width),

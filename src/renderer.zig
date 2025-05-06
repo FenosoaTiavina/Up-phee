@@ -30,6 +30,9 @@ pub const Window = struct {
         };
     }
 
+    pub fn getSize(self: *@This()) T_.Size {
+        return T_.Size{ .width = self.window_dimension.width, .height = self.window_dimension.height };
+    }
     pub fn deinit(self: *Window) void {
         c.sdl.SDL_DestroyWindow(self.sdl_window);
         c.sdl.SDL_Quit();
@@ -78,19 +81,17 @@ pub const Renderer = struct {
     }
 
     pub fn deinit(self: *Renderer) void {
-        if (self.transfer_buffer) |buffer| {
-            c.sdl.SDL_ReleaseGPUTransferBuffer(self.device, buffer);
-        }
+        // const its = self.pipelines.clearAndFree();
 
-        if (self.default_sampler) |sampler| {
-            c.sdl.SDL_ReleaseGPUSampler(self.device, sampler);
-        }
+        // while (its.next()) |entry| {
+        //     c.sdl.SDL_ReleaseGPUGraphicsPipeline(self.device, entry.*);
+        // }
 
-        var it = self.pipelines.iterator();
-        while (it.next()) |entry| {
-            const pipeline = entry.value_ptr.*;
-            c.sdl.SDL_ReleaseGPUGraphicsPipeline(self.device, pipeline);
-        }
+        c.sdl.SDL_ReleaseGPUTransferBuffer(self.*.device, self.*.transfer_buffer);
+
+        c.sdl.SDL_ReleaseGPUSampler(self.*.device, self.*.default_sampler);
+
+        self.*.pipelines.deinit();
         c.sdl.SDL_ReleaseWindowFromGPUDevice(self.device, self.window.sdl_window);
         c.sdl.SDL_DestroyGPUDevice(self.device);
 
