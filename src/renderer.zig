@@ -221,7 +221,7 @@ pub const Renderer = struct {
             self.render_pass = null;
         }
         for (self.command_buffers.items, 0..) |cmd_buf, i| {
-            if (c.sdl.SDL_SubmitGPUCommandBuffer(cmd_buf))
+            if (!c.sdl.SDL_SubmitGPUCommandBuffer(cmd_buf))
                 std.log.err("Failed cmd_buf[{d}] {s} ", .{ i, c.sdl.SDL_GetError() });
         }
 
