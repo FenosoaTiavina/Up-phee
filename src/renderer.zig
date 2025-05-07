@@ -6,7 +6,7 @@ const zgui = @import("zgui");
 
 const T_ = @import("types.zig");
 const c = @import("imports.zig");
-const shader = @import("shader.zig");
+const Shader = @import("shader.zig");
 const components = @import("./components/components.zig");
 
 pub const Window = struct {
@@ -30,8 +30,8 @@ pub const Window = struct {
         };
     }
 
-    pub fn getSize(self: *@This()) T_.Size {
-        return T_.Size{ .width = self.window_dimension.width, .height = self.window_dimension.height };
+    pub fn getSize(self: *Window) T_.Size {
+        return self.window_dimension;
     }
     pub fn deinit(self: *Window) void {
         c.sdl.SDL_DestroyWindow(self.sdl_window);
@@ -43,16 +43,19 @@ pub const Renderer = struct {
     allocator: std.mem.Allocator,
     window: Window,
     device: *c.sdl.SDL_GPUDevice,
-    default_sampler: ?*c.sdl.SDL_GPUSampler,
-    transfer_buffer: ?*c.sdl.SDL_GPUTransferBuffer,
+    default_sampler: *c.sdl.SDL_GPUSampler,
+    transfer_buffer: *c.sdl.SDL_GPUTransferBuffer,
     command_buffers: std.ArrayList(*c.sdl.SDL_GPUCommandBuffer),
+    pipelines: std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline),
     render_pass: ?*c.sdl.SDL_GPURenderPass = null,
-    pipelines: std.StringHashMap(*c.sdl.SDL_GPUGraphicsPipeline),
 
-    pub fn init(allocator: std.mem.Allocator, width: u32, height: u32, title: [*c]const u8) !Renderer {
-        const window = try Window.init(width, height, title);
+    pub fn init(allocator: std.mem.Allocator, width: u32, height: u32, title: [*:0]const u8) !*Renderer {
+        var window = try Window.init(width, height, title);
+
         const device = c.sdl.SDL_CreateGPUDevice(c.sdl.SDL_GPU_SHADERFORMAT_SPIRV, true, null) orelse return error.DeviceCreationFailed;
-        if (!c.sdl.SDL_ClaimWindowForGPUDevice(device, window.sdl_window)) return error.WindowClaimFailed;
+
+        if (!c.sdl.SDL_ClaimWindowForGPUDevice(device, window.sdl_window))
+            return error.WindowClaimFailed;
 
         _ = c.sdl.SDL_SetGPUSwapchainParameters(device, window.sdl_window, c.sdl.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.sdl.SDL_GPU_PRESENTMODE_MAILBOX);
 
@@ -62,46 +65,65 @@ pub const Renderer = struct {
             .address_mode_u = c.sdl.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
             .address_mode_v = c.sdl.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
             .address_mode_w = c.sdl.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        }) orelse return error.SamplerCreationFailed;
+        }) orelse {
+            c.sdl.SDL_DestroyGPUDevice(device);
+            window.deinit();
+            return error.SamplerCreationFailed;
+        };
 
         const transfer = c.sdl.SDL_CreateGPUTransferBuffer(device, &.{
             .usage = c.sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
             .size = 1024 * 1024,
-        }) orelse return error.TransferBufferCreationFailed;
+        }) orelse {
+            c.sdl.SDL_ReleaseGPUSampler(device, sampler);
+            c.sdl.SDL_DestroyGPUDevice(device);
+            window.deinit();
+            return error.TransferBufferCreationFailed;
+        };
 
-        return Renderer{
+        var renderer = try allocator.create(Renderer);
+        _ = &renderer;
+        renderer.* = Renderer{
             .allocator = allocator,
             .window = window,
             .device = device,
             .default_sampler = sampler,
-            .command_buffers = std.ArrayList(*c.sdl.SDL_GPUCommandBuffer).init(allocator),
             .transfer_buffer = transfer,
-            .pipelines = std.StringHashMap(*c.sdl.SDL_GPUGraphicsPipeline).init(allocator),
+            .command_buffers = std.ArrayList(*c.sdl.SDL_GPUCommandBuffer).init(allocator),
+            .pipelines = std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline).init(allocator),
+            .render_pass = null,
         };
+        return renderer;
     }
 
     pub fn deinit(self: *Renderer) void {
-        // const its = self.pipelines.clearAndFree();
+        var it = self.pipelines.valueIterator();
+        while (it.next()) |pipeline_ptr| {
+            c.sdl.SDL_ReleaseGPUGraphicsPipeline(self.device, pipeline_ptr.*);
+        }
+        self.pipelines.deinit();
 
-        // while (its.next()) |entry| {
-        //     c.sdl.SDL_ReleaseGPUGraphicsPipeline(self.device, entry.*);
-        // }
+        for (self.command_buffers.items) |cmd_buf| {
+            // No release needed? If yes, release here.
+            _ = cmd_buf;
+        }
+        self.command_buffers.deinit();
 
-        c.sdl.SDL_ReleaseGPUTransferBuffer(self.*.device, self.*.transfer_buffer);
+        c.sdl.SDL_ReleaseGPUTransferBuffer(self.device, self.transfer_buffer);
+        c.sdl.SDL_ReleaseGPUSampler(self.device, self.default_sampler);
 
-        c.sdl.SDL_ReleaseGPUSampler(self.*.device, self.*.default_sampler);
-
-        self.*.pipelines.deinit();
         c.sdl.SDL_ReleaseWindowFromGPUDevice(self.device, self.window.sdl_window);
         c.sdl.SDL_DestroyGPUDevice(self.device);
 
         self.window.deinit();
+
+        self.allocator.destroy(self);
     }
 
-    pub fn getAspectRatio(self: *Renderer) f32 {
+    pub fn getAspectRatio(self: *const Renderer) f32 {
         var w: c_int = 0;
         var h: c_int = 0;
-        _ = c.sdl.SDL_GetWindowSize(self.*.window.sdl_window, &w, &h);
+        _ = c.sdl.SDL_GetWindowSize(self.window.sdl_window, &w, &h);
         return @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(h));
     }
 
@@ -110,7 +132,7 @@ pub const Renderer = struct {
             return error.CommandBufferAcquisitionFailed;
         };
 
-        try self.*.command_buffers.append(command_buffer);
+        try self.command_buffers.append(command_buffer);
 
         var swapchain_texture: ?*c.sdl.SDL_GPUTexture = null;
         if (c.sdl.SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, self.*.window.sdl_window, &swapchain_texture, null, null) == false) {
@@ -148,77 +170,68 @@ pub const Renderer = struct {
         }
     }
 
-    pub fn getSwapchainTextureFormat(self: *Renderer) c.sdl.SDL_GPUTextureFormat {
-        return c.sdl.SDL_GetGPUSwapchainTextureFormat(self.device, self.window.sdl_window);
-    }
+    pub fn render(self: *Renderer, registry: *ecs.Registry, active_camera: ecs.Entity) !void {
+        const cmd_buf = self.command_buffers.items[0];
 
-    pub fn render(self: *Renderer, registry: *ecs.Registry, active_camera_entity: ecs.Entity) !void {
-        const cmd = self.command_buffers.items[0];
+        const camera = registry.get(components.Camera.CameraData, active_camera);
 
-        const camera_component = registry.get(components.Camera.CameraData, active_camera_entity);
-
-        var renderable_entities = registry.view(
-            .{
-                components.Transform.Transform,
-                components.Mesh.MeshData,
-            },
+        var view = registry.view(
+            .{ components.Transform.Transform, components.Mesh.MeshData },
             .{},
         );
 
-        var entt_view_iter = renderable_entities.entityIterator();
-
-        while (entt_view_iter.next()) |entity| {
-            const mesh = renderable_entities.get(components.Mesh.MeshData, entity);
-            const trasform = renderable_entities.get(components.Transform.Transform, entity);
+        var it = view.entityIterator();
+        while (it.next()) |entity| {
+            const mesh = view.get(components.Mesh.MeshData, entity);
+            const transform = view.get(components.Transform.Transform, entity);
 
             if (registry.has(PipelineComponent, entity)) {
-                const pipeline_comp =
-                    registry.get(PipelineComponent, entity);
-                c.sdl.SDL_BindGPUGraphicsPipeline(self.render_pass, self.pipelines.get(pipeline_comp.*.handle));
+                const pipeline_comp = registry.get(PipelineComponent, entity);
+                if (self.pipelines.get(pipeline_comp.handle)) |pipeline| {
+                    c.sdl.SDL_BindGPUGraphicsPipeline(self.render_pass.?, pipeline);
+                }
             }
 
             if (registry.has(components.Mesh.TextureData, entity)) {
-                const texture_comp: components.Mesh.TextureData = renderable_entities.get(components.Mesh.TextureData, entity).*;
+                const tex_data = view.get(components.Mesh.TextureData, entity).*;
                 c.sdl.SDL_BindGPUFragmentSamplers(
-                    self.render_pass,
+                    self.render_pass.?,
                     0,
-                    &(c.sdl.SDL_GPUTextureSamplerBinding{ .texture = texture_comp.texture, .sampler = texture_comp.sampler }),
+                    &(c.sdl.SDL_GPUTextureSamplerBinding{
+                        .texture = tex_data.texture,
+                        .sampler = tex_data.sampler,
+                    }),
                     1,
                 );
             }
 
             components.Mesh.updateAndRender(
-                cmd,
+                cmd_buf,
                 self.render_pass.?,
-                trasform,
+                transform,
                 mesh,
-                camera_component,
+                camera,
             );
         }
     }
 
-    pub fn zgui_render(self: *Renderer) !void {
-        _ = self; // autofix
-        // const cmd = self.command_buffers.items[0];
-        // zgui.backend.renderDrawData(cmd, self.render_pass.?, null);
-        // zgui.endFrame();
-    }
-
     pub fn endFrame(self: *Renderer) !void {
-        c.sdl.SDL_EndGPURenderPass(self.*.render_pass);
-
-        for (self.command_buffers.items) |cmd_buf| {
-            _ = c.sdl.SDL_SubmitGPUCommandBuffer(cmd_buf);
+        if (self.render_pass) |pass| {
+            c.sdl.SDL_EndGPURenderPass(pass);
+            self.render_pass = null;
+        }
+        for (self.command_buffers.items, 0..) |cmd_buf, i| {
+            if (c.sdl.SDL_SubmitGPUCommandBuffer(cmd_buf))
+                std.log.err("Failed cmd_buf[{d}] {s} ", .{ i, c.sdl.SDL_GetError() });
         }
 
-        self.*.command_buffers.clearAndFree();
+        self.command_buffers.clearAndFree(); // reuse memory next frame
     }
 };
 
 const GraphicsPipelineDesc = struct {
-    pipeline_name: []const u8,
-    vertex_shader: shader.Shader,
-    fragment_shader: shader.Shader,
+    vertex_shader: Shader,
+    fragment_shader: Shader,
     vertex_input_state: c.sdl.SDL_GPUVertexInputState,
     wireframe: bool,
 };
@@ -248,7 +261,8 @@ pub fn createGraphicsPipeline(renderer: *Renderer, desc: GraphicsPipelineDesc) !
     };
 
     const pipeline = c.sdl.SDL_CreateGPUGraphicsPipeline(renderer.device, &pipeline_info) orelse return error.PipelineCreationFailed;
-    try renderer.pipelines.put(desc.pipeline_name, pipeline);
+    const id: u32 = renderer.pipelines.count();
+    try renderer.pipelines.put(@intCast(id), pipeline);
 }
 
 pub fn createBuffer(

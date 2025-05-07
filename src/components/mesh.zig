@@ -37,8 +37,8 @@ pub fn createMeshComponent(renderer: *rd.Renderer, vertices: []const Vertex, ind
         return error.CopyPassCreationFailed;
     };
 
-    try rd.uploadToGPU(renderer.device, copy_pass, renderer.transfer_buffer.?, 0, Vertex, vertices, vertex_buffer);
-    try rd.uploadToGPU(renderer.device, copy_pass, renderer.transfer_buffer.?, @intCast(@sizeOf(Vertex) * vertices.len), u16, indices, index_buffer);
+    try rd.uploadToGPU(renderer.device, copy_pass, renderer.transfer_buffer, 0, Vertex, vertices, vertex_buffer);
+    try rd.uploadToGPU(renderer.device, copy_pass, renderer.transfer_buffer, @intCast(@sizeOf(Vertex) * vertices.len), u16, indices, index_buffer);
 
     c.sdl.SDL_EndGPUCopyPass(copy_pass);
     _ = c.sdl.SDL_SubmitGPUCommandBuffer(command_buffer);

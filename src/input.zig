@@ -1353,7 +1353,7 @@ pub fn init(_ctx: uph.Context.Context) void {
 }
 
 inline fn getCanvasScale() f32 {
-    const canvas_size = ctx.window().window_dimension;
+    const canvas_size = ctx.window().getSize();
     const canvas_area = uph.Types.Rectangle{
         .height = @floatFromInt(canvas_size.height),
         .width = @floatFromInt(canvas_size.width),

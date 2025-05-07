@@ -136,9 +136,9 @@ pub fn uphContext(comptime cfg: config.Config) type {
         _running: bool = true,
 
         // Internal window
-        _window: uph.Renderer.Window = undefined,
+        _window: *uph.Renderer.Window = undefined,
         // Renderer instance
-        _renderer: uph.Renderer.Renderer = undefined,
+        _renderer: *uph.Renderer.Renderer = undefined,
         _aspect_ratio: f32 = undefined,
 
         // High DPI stuff
@@ -185,6 +185,8 @@ pub fn uphContext(comptime cfg: config.Config) type {
                 self.context().cfg().uph_window_size.custom.height,
                 self.context().cfg().uph_window_title,
             );
+
+            self._window = &self._renderer.window;
 
             // Init imgui
             // zgui.init(self.context().allocator());
@@ -526,13 +528,13 @@ pub fn uphContext(comptime cfg: config.Config) type {
         /// Get window
         fn window(ptr: *anyopaque) *uph.Renderer.Window {
             const self: *@This() = @ptrCast(@alignCast(ptr));
-            return &self._window;
+            return self._window;
         }
 
         /// Get renderer
         fn renderer(ptr: *anyopaque) *uph.Renderer.Renderer {
             const self: *@This() = @ptrCast(@alignCast(ptr));
-            return &self._renderer;
+            return self._renderer;
         }
 
         /// Kill app
