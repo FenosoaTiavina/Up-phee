@@ -179,12 +179,12 @@ pub fn uphContext(comptime cfg: config.Config) type {
             self._ctx = self.context();
 
             // Init SDL window and renderer
-            self._renderer = try uph.Renderer.Renderer.init(
+            self._renderer = @constCast(try uph.Renderer.Renderer.init(
                 self.context().allocator(),
                 self.context().cfg().uph_window_size.custom.width,
                 self.context().cfg().uph_window_size.custom.height,
                 self.context().cfg().uph_window_title,
-            );
+            ));
 
             self._window = &self._renderer.window;
 

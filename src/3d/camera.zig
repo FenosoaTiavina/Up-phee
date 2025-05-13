@@ -5,7 +5,7 @@ const zm = @import("zmath");
 
 const T_ = @import("../types.zig");
 
-pub const CameraData = struct {
+pub const Camera = struct {
     position: T_.Vec4_f32,
     front: T_.Vec4_f32,
     up: T_.Vec4_f32,
@@ -17,7 +17,9 @@ pub const CameraData = struct {
     speed: f32,
     sensitivity: f32,
     aspect: f32,
+
     view_matrix: T_.Mat4_f32,
+
     projection_matrix: T_.Mat4_f32,
 
     // Field to choose movement system
@@ -26,9 +28,12 @@ pub const CameraData = struct {
     rotation_quat: zm.Quat,
 };
 
-// Include the rest of your Camera methods here...
-
-pub fn init(position: [3]f32, target: [3]f32, aspect: f32, use_quaternion: bool) CameraData {
+pub fn init(
+    position: [3]f32,
+    target: [3]f32,
+    aspect: f32,
+    use_quaternion: bool,
+) Camera {
     const pos = T_.Vec4_f32{ position[0], position[1], position[2], 1.0 };
     const tar = T_.Vec4_f32{ target[0], target[1], target[2], 1.0 };
     _ = tar; // autofix
@@ -44,7 +49,7 @@ pub fn init(position: [3]f32, target: [3]f32, aspect: f32, use_quaternion: bool)
     // Calculate initial up vector
     const up = zm.normalize3(zm.cross3(right, default_front));
 
-    var camera = CameraData{
+    var camera = Camera{
         .position = pos,
         .front = default_front,
         .up = up,
@@ -77,7 +82,7 @@ pub fn init(position: [3]f32, target: [3]f32, aspect: f32, use_quaternion: bool)
     return camera;
 }
 
-pub fn updateResize(camera: *CameraData, aspect: f32) void {
+pub fn updateResize(camera: *Camera, aspect: f32) void {
     camera.aspect = aspect;
     camera.projection_matrix = zm.perspectiveFovRh(
         std.math.degreesToRadians(45.0),
@@ -88,13 +93,15 @@ pub fn updateResize(camera: *CameraData, aspect: f32) void {
 
     // Update view matrix
     if (camera.use_quaternion) {
-        updateQuaternion(camera);
+        updateQuaternion(
+            camera,
+        );
     } else {
         updateEuler(camera);
     }
 }
 
-pub fn move(camera: *CameraData, vec_move_amount: T_.Vec3_f32) void {
+pub fn move(camera: *Camera, vec_move_amount: T_.Vec3_f32) void {
     // Constrain movement to horizontal plane and vertical axes
     // Right vector (X axis in camera space)
     const rightMovement = (T_.Vec4_f32{ camera.right[0], 0.0, camera.right[2], 0.0 } * zm.f32x4(vec_move_amount[0], vec_move_amount[0], vec_move_amount[0], 0.0));
@@ -121,7 +128,7 @@ pub fn move(camera: *CameraData, vec_move_amount: T_.Vec3_f32) void {
 }
 
 // Unified rotate function that delegates to the appropriate implementation
-pub fn rotate(camera: *CameraData, x: f32, y: f32, z: f32, constraint_pitch: bool) void {
+pub fn rotate(camera: *Camera, x: f32, y: f32, z: f32, constraint_pitch: bool) void {
     // Ignore roll (z) as per requirements
     _ = z;
 
@@ -135,7 +142,7 @@ pub fn rotate(camera: *CameraData, x: f32, y: f32, z: f32, constraint_pitch: boo
     }
 }
 
-pub fn update(camera: *CameraData) void {
+pub fn update(camera: *Camera) void {
     if (camera.use_quaternion) {
         updateQuaternion(camera);
     } else {
@@ -145,7 +152,7 @@ pub fn update(camera: *CameraData) void {
 
 // ========== EULER ANGLES IMPLEMENTATION ==========
 
-pub fn updateEuler(camera: *CameraData) void {
+pub fn updateEuler(camera: *Camera) void {
     // Calculate front vector from yaw only (horizontal rotation)
     var front: T_.Vec4_f32 = T_.Vec4_f32{ 0, 0, 0, 0 };
     front[0] = @sin(std.math.degreesToRadians(camera.yaw));
@@ -178,7 +185,7 @@ pub fn updateEuler(camera: *CameraData) void {
     camera.view_matrix = zm.lookAtRh(camera.position, target, camera.world_up);
 }
 
-pub fn rotateEuler(camera: *CameraData, x: f32, y: f32, constraint_pitch: bool) void {
+pub fn rotateEuler(camera: *Camera, x: f32, y: f32, constraint_pitch: bool) void {
     const _x = camera.sensitivity * x;
     const _y = camera.sensitivity * y;
 
@@ -201,7 +208,7 @@ pub fn rotateEuler(camera: *CameraData, x: f32, y: f32, constraint_pitch: bool) 
 
 // ========== QUATERNION IMPLEMENTATION ==========
 
-pub fn updateQuaternion(camera: *CameraData) void {
+pub fn updateQuaternion(camera: *Camera) void {
     // Convert quaternion to rotation matrix
     const rotation_matrix = zm.matFromQuat(camera.rotation_quat);
 
@@ -225,7 +232,7 @@ pub fn updateQuaternion(camera: *CameraData) void {
     camera.view_matrix = zm.lookAtRh(camera.position, target, camera.world_up);
 }
 
-pub fn rotateQuaternion(camera: *CameraData, x: f32, y: f32, constraint_pitch: bool) void {
+pub fn rotateQuaternion(camera: *Camera, x: f32, y: f32, constraint_pitch: bool) void {
     const _x = camera.sensitivity * x;
     const _y = camera.sensitivity * y;
 
@@ -263,8 +270,6 @@ pub fn rotateQuaternion(camera: *CameraData, x: f32, y: f32, constraint_pitch: b
 
     update(camera);
 }
-
-// Helpers for quaternion implementation
 
 fn quatToEuler(q: zm.Quat) [3]f32 {
     // Convert quaternion to Euler angles (yaw, pitch, roll) in degrees

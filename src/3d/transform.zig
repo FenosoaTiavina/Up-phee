@@ -1,6 +1,5 @@
 const zm = @import("zmath");
 
-const ecs = @import("ecs");
 const T_ = @import("../types.zig");
 
 pub const Transform = struct {
@@ -17,6 +16,41 @@ pub fn init() Transform {
         .scale = .{ 1, 1, 1, 1 },
         .model_matrix = zm.identity(),
     };
+}
+
+pub fn setPosition(self: *Transform, position: T_.Vec3_f32) void {
+    self.position = position;
+    updateModelMatrix(self);
+}
+
+pub fn setRotation(self: *Transform, rotation: T_.Vec3_f32) void {
+    self.rotation = rotation;
+    updateModelMatrix(self);
+}
+
+pub fn setScale(self: *Transform, scale: T_.Vec3_f32) void {
+    self.scale = scale;
+    updateModelMatrix(self);
+}
+
+pub fn rotate(self: *Transform, x: f32, y: f32, z: f32) void {
+    self.rotation[0] += x;
+    self.rotation[1] += y;
+    self.rotation[2] += z;
+
+    // Normalize rotations
+    self.rotation[0] = @mod(self.rotation[0], 360.0);
+    self.rotation[1] = @mod(self.rotation[1], 360.0);
+    self.rotation[2] = @mod(self.rotation[2], 360.0);
+
+    updateModelMatrix(self);
+}
+
+pub fn translate(self: *Transform, x: f32, y: f32, z: f32) void {
+    self.position[0] += x;
+    self.position[1] += y;
+    self.position[2] += z;
+    updateModelMatrix(self);
 }
 
 pub fn updateModelMatrix(transform: *Transform) void {

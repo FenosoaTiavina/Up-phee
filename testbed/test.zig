@@ -22,7 +22,7 @@ const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
 
 fn on_move_key(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, delta_time: *f32, ctx: *anyopaque) bool {
-    const cam: *Components.Camera.CameraData = @ptrCast(@alignCast(ctx));
+    const cam: *Components.Camera.Camera = @ptrCast(@alignCast(ctx));
     var movement = T_.Vec3_f32{ 0.0, 0.0, 0.0 };
 
     for (event_received.keys.items) |ev_k| {
@@ -70,7 +70,7 @@ fn on_move_key(_: *EventSystem.EventManager, event_received: *EventSystem.EventM
 }
 
 fn on_mouse_motion(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, _: *f32, ctx: *anyopaque) bool {
-    const cam: *Components.Camera.CameraData = @ptrCast(@alignCast(ctx));
+    const cam: *Components.Camera.Camera = @ptrCast(@alignCast(ctx));
 
     if (event_received.mouse_motion != null and event_received.grabbed != null and event_received.grabbed.? == true) {
         Components.Camera.rotate(cam, event_received.mouse_motion.?.x_rel, event_received.mouse_motion.?.y_rel, 0, true);
@@ -211,7 +211,7 @@ pub fn main() !void {
     var quit = false;
     _ = &quit;
 
-    const cam = registry.get(Components.Camera.CameraData, camera_entity);
+    const cam = registry.get(Components.Camera.Camera, camera_entity);
 
     var delta_time: f32 = 0;
 
@@ -299,20 +299,20 @@ pub fn main() !void {
         zgui.setNextWindowSize(.{ .w = -1.0, .h = -1.0, .cond = .first_use_ever });
         if (zgui.begin("info", .{})) {
             zgui.text("camera target :{any},{any},{any}", .{
-                registry.get(Components.Camera.CameraData, camera_entity).*.front[0],
-                registry.get(Components.Camera.CameraData, camera_entity).*.front[1],
-                registry.get(Components.Camera.CameraData, camera_entity).*.front[2],
+                registry.get(Components.Camera.Camera, camera_entity).*.front[0],
+                registry.get(Components.Camera.Camera, camera_entity).*.front[1],
+                registry.get(Components.Camera.Camera, camera_entity).*.front[2],
             });
             zgui.text("camera front :{any},{any},{any}", .{
-                registry.get(Components.Camera.CameraData, camera_entity).*.front[0],
-                registry.get(Components.Camera.CameraData, camera_entity).*.front[1],
-                registry.get(Components.Camera.CameraData, camera_entity).*.front[2],
+                registry.get(Components.Camera.Camera, camera_entity).*.front[0],
+                registry.get(Components.Camera.Camera, camera_entity).*.front[1],
+                registry.get(Components.Camera.Camera, camera_entity).*.front[2],
             });
 
             zgui.text("camera position :{any},{any},{any}", .{
-                registry.get(Components.Camera.CameraData, camera_entity).*.position[0],
-                registry.get(Components.Camera.CameraData, camera_entity).*.position[1],
-                registry.get(Components.Camera.CameraData, camera_entity).*.position[2],
+                registry.get(Components.Camera.Camera, camera_entity).*.position[0],
+                registry.get(Components.Camera.Camera, camera_entity).*.position[1],
+                registry.get(Components.Camera.Camera, camera_entity).*.position[2],
             });
 
             if (zgui.button("reset Cam", .{})) {

@@ -1,17 +1,19 @@
 const std = @import("std");
 
-const T_ = @import("../types.zig");
+const Types = @import("../types.zig");
 
 const c = @import("../imports.zig");
-const rd = @import("../renderer.zig");
+const Renderer = @import("../renderer.zig");
 
-const components = @import("./components.zig");
+const uph3d = @import("./3d.zig");
 
 pub const Vertex = struct {
-    position: T_.Vec3_f32,
-    color: T_.Vec4_f32,
-    uv: T_.Vec2_f32,
+    position: Types.Vec3_f32,
+    color: Types.Vec4_f32,
+    uv: Types.Vec2_f32,
 };
+
+pub const Index = u16;
 
 pub const MeshData = struct {
     vertex_buffer: *c.sdl.SDL_GPUBuffer,
@@ -19,17 +21,17 @@ pub const MeshData = struct {
     num_indices: u32,
 };
 
-pub fn createMeshComponent(renderer: *rd.Renderer, vertices: []const Vertex, indices: []const u16) !MeshData {
-    const vertex_buffer = rd.createBuffer(renderer.device, c.sdl.SDL_GPU_BUFFERUSAGE_VERTEX, @intCast(@sizeOf(Vertex) * vertices.len)) orelse {
+pub fn createMeshComponent(rd: *Renderer.Renderer, vertices: []const Vertex, indices: []const u16) !MeshData {
+    const vertex_buffer = Renderer.createBuffer(rd.device, c.sdl.SDL_GPU_BUFFERUSAGE_VERTEX, @intCast(@sizeOf(Vertex) * vertices.len)) orelse {
         return error.VertexBufferCreationFailed;
     };
 
-    const index_buffer = rd.createBuffer(renderer.device, c.sdl.SDL_GPU_BUFFERUSAGE_VERTEX, @intCast(@sizeOf(u16) * indices.len)) orelse {
+    const index_buffer = Renderer.createBuffer(rd.device, c.sdl.SDL_GPU_BUFFERUSAGE_VERTEX, @intCast(@sizeOf(u16) * indices.len)) orelse {
         return error.IndexBufferCreationFailed;
     };
 
     // Upload data
-    const command_buffer = c.sdl.SDL_AcquireGPUCommandBuffer(renderer.device) orelse {
+    const command_buffer = c.sdl.SDL_AcquireGPUCommandBuffer(rd.device) orelse {
         return error.CommandBufferAcquisitionFailed;
     };
 
@@ -37,8 +39,8 @@ pub fn createMeshComponent(renderer: *rd.Renderer, vertices: []const Vertex, ind
         return error.CopyPassCreationFailed;
     };
 
-    try rd.uploadToGPU(renderer.device, copy_pass, renderer.transfer_buffer, 0, Vertex, vertices, vertex_buffer);
-    try rd.uploadToGPU(renderer.device, copy_pass, renderer.transfer_buffer, @intCast(@sizeOf(Vertex) * vertices.len), u16, indices, index_buffer);
+    try Renderer.uploadToGPU(rd.device, copy_pass, rd.transfer_buffer, 0, Vertex, vertices, vertex_buffer);
+    try Renderer.uploadToGPU(rd.device, copy_pass, rd.transfer_buffer, @intCast(@sizeOf(Vertex) * vertices.len), u16, indices, index_buffer);
 
     c.sdl.SDL_EndGPUCopyPass(copy_pass);
     _ = c.sdl.SDL_SubmitGPUCommandBuffer(command_buffer);
@@ -55,7 +57,7 @@ pub const TextureData = struct {
     sampler: ?*c.sdl.SDL_GPUSampler,
 };
 
-pub fn createTextureComponent(renderer: *rd.Renderer, texture_path: []const u8) !TextureData {
+pub fn createTextureComponent(renderer: *Renderer.Renderer, texture_path: []const u8) !TextureData {
     var texture_size = [2]usize{ 0, 0 };
     var image_data: [*c]u8 = c.stb.stbi_load(texture_path.ptr, @ptrCast(&texture_size[0]), @ptrCast(&texture_size[1]), null, 4);
 
@@ -98,7 +100,7 @@ pub fn createTextureComponent(renderer: *rd.Renderer, texture_path: []const u8) 
     };
 
     var pixels = image_data[0..texture_byte_size];
-    try rd.uploadTextureGPU(renderer.device, copy_pass, texture_transfer_buffer, texture, 0, u8, &pixels, texture_size, texture_byte_size);
+    try Renderer.uploadTextureGPU(renderer.device, copy_pass, texture_transfer_buffer, texture, 0, u8, &pixels, texture_size, texture_byte_size);
 
     c.sdl.SDL_EndGPUCopyPass(copy_pass);
     _ = c.sdl.SDL_SubmitGPUCommandBuffer(command_buffer);
@@ -109,29 +111,29 @@ pub fn createTextureComponent(renderer: *rd.Renderer, texture_path: []const u8) 
     };
 }
 
-pub fn updateAndRender(
-    command_buffer: *c.sdl.SDL_GPUCommandBuffer,
-    render_pass: *c.sdl.SDL_GPURenderPass,
-    transform: *components.Transform.Transform,
-    mesh: *MeshData,
-    camera_component: *components.Camera.CameraData,
-) void {
-    components.Transform.updateModelMatrix(transform);
-    // Bind vertex and index buffers
-    const vert_buffer_binding = c.sdl.SDL_GPUBufferBinding{
-        .buffer = mesh.vertex_buffer,
-        .offset = 0,
-    };
-    c.sdl.SDL_BindGPUVertexBuffers(render_pass, 0, &vert_buffer_binding, 1);
-    c.sdl.SDL_BindGPUIndexBuffer(render_pass, &.{ .buffer = mesh.index_buffer, .offset = 0 }, c.sdl.SDL_GPU_INDEXELEMENTSIZE_16BIT);
-
-    const ubo = components.Render.UniformBufferObject{
-        .model = transform.model_matrix,
-        .view = camera_component.view_matrix,
-        .projection = camera_component.projection_matrix,
-    };
-
-    c.sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &ubo, @sizeOf(components.Render.UniformBufferObject));
-
-    c.sdl.SDL_DrawGPUIndexedPrimitives(render_pass, mesh.num_indices, 1, 0, 0, 0);
-}
+// pub fn updateAndRender(
+//     command_buffer: *c.sdl.SDL_GPUCommandBuffer,
+//     render_pass: *c.sdl.SDL_GPURenderPass,
+//     transform: *uph3d.Transform.Transform,
+//     mesh: *MeshData,
+//     camera_component: *uph3d.Camera.Camera,
+// ) void {
+//     uph3d.Transform.updateModelMatrix(transform);
+//     // Bind vertex and index buffers
+//     const vert_buffer_binding = c.sdl.SDL_GPUBufferBinding{
+//         .buffer = mesh.vertex_buffer,
+//         .offset = 0,
+//     };
+//     c.sdl.SDL_BindGPUVertexBuffers(render_pass, 0, &vert_buffer_binding, 1);
+//     c.sdl.SDL_BindGPUIndexBuffer(render_pass, &.{ .buffer = mesh.index_buffer, .offset = 0 }, c.sdl.SDL_GPU_INDEXELEMENTSIZE_16BIT);
+//
+//     const ubo = uph3d.Render.UniformBufferObject{
+//         .model = transform.model_matrix,
+//         .view = camera_component.view_matrix,
+//         .projection = camera_component.projection_matrix,
+//     };
+//
+//     c.sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &ubo, @sizeOf(uph3d.Render.UniformBufferObject));
+//
+//     c.sdl.SDL_DrawGPUIndexedPrimitives(render_pass, mesh.num_indices, 1, 0, 0, 0);
+// }

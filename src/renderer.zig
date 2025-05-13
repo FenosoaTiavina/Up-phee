@@ -7,7 +7,7 @@ const zgui = @import("zgui");
 const T_ = @import("types.zig");
 const c = @import("imports.zig");
 const Shader = @import("shader.zig");
-const components = @import("./components/components.zig");
+const uph3d = @import("./3d/3d.zig");
 
 pub const Window = struct {
     sdl_window: *c.sdl.SDL_Window,
@@ -47,7 +47,8 @@ pub const Renderer = struct {
     transfer_buffer: *c.sdl.SDL_GPUTransferBuffer,
     command_buffers: std.ArrayList(*c.sdl.SDL_GPUCommandBuffer),
     pipelines: std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline),
-    render_pass: ?*c.sdl.SDL_GPURenderPass = null,
+    clear_color: T_.Vec4_f32,
+    target_info: c.sdl.SDL_GPUColorTargetInfo = undefined,
 
     pub fn init(allocator: std.mem.Allocator, width: u32, height: u32, title: [*:0]const u8) !*Renderer {
         var window = try Window.init(width, height, title);
@@ -73,7 +74,7 @@ pub const Renderer = struct {
 
         const transfer = c.sdl.SDL_CreateGPUTransferBuffer(device, &.{
             .usage = c.sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-            .size = 1024 * 1024,
+            .size = 1024 * 1024 * 100,
         }) orelse {
             c.sdl.SDL_ReleaseGPUSampler(device, sampler);
             c.sdl.SDL_DestroyGPUDevice(device);
@@ -81,33 +82,36 @@ pub const Renderer = struct {
             return error.TransferBufferCreationFailed;
         };
 
-        var renderer = try allocator.create(Renderer);
-        _ = &renderer;
+        const renderer = try allocator.create(Renderer);
+
+        const default_color = T_.Vec4_f32{ 0, 0, 0, 1 };
+
         renderer.* = Renderer{
             .allocator = allocator,
             .window = window,
             .device = device,
             .default_sampler = sampler,
             .transfer_buffer = transfer,
+            .clear_color = default_color,
             .command_buffers = std.ArrayList(*c.sdl.SDL_GPUCommandBuffer).init(allocator),
             .pipelines = std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline).init(allocator),
-            .render_pass = null,
         };
         return renderer;
     }
 
     pub fn deinit(self: *Renderer) void {
         var it = self.pipelines.valueIterator();
+
         while (it.next()) |pipeline_ptr| {
             c.sdl.SDL_ReleaseGPUGraphicsPipeline(self.device, pipeline_ptr.*);
         }
-        self.pipelines.deinit();
 
-        for (self.command_buffers.items) |cmd_buf| {
-            // No release needed? If yes, release here.
-            _ = cmd_buf;
-        }
-        self.command_buffers.deinit();
+        self.pipelines.clearAndFree();
+        // for (self.command_buffers.items) |cmd_buf| {
+        //     // No release needed? If yes, release here.
+        //     _ = cmd_buf;
+        // }
+        self.command_buffers.clearAndFree();
 
         c.sdl.SDL_ReleaseGPUTransferBuffer(self.device, self.transfer_buffer);
         c.sdl.SDL_ReleaseGPUSampler(self.device, self.default_sampler);
@@ -127,6 +131,16 @@ pub const Renderer = struct {
         return @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(h));
     }
 
+    pub fn getPipeline(self: *Renderer, pipeline_id: u32) !*c.sdl.SDL_GPUGraphicsPipeline {
+        return self.pipelines.get(pipeline_id) orelse {
+            return error.GraphicsPipelineDoesNotExist;
+        };
+    }
+
+    pub fn clear(self: *Renderer, color: T_.Vec4_f32) void {
+        self.clear_color = color;
+    }
+
     pub fn beginFrame(self: *Renderer) !void {
         const command_buffer = c.sdl.SDL_AcquireGPUCommandBuffer(self.device) orelse {
             return error.CommandBufferAcquisitionFailed;
@@ -143,86 +157,41 @@ pub const Renderer = struct {
             return error.NullSwapchainTexture;
         }
 
-        var color_target_info = c.sdl.SDL_GPUColorTargetInfo{
+        self.target_info = c.sdl.SDL_GPUColorTargetInfo{
             .texture = swapchain_texture,
             .clear_color = .{
-                .r = 0.28,
-                .g = 0.28,
-                .b = 0.28,
-                .a = 1.0,
+                .r = self.clear_color[0],
+                .g = self.clear_color[1],
+                .b = self.clear_color[2],
+                .a = self.clear_color[3],
             },
             .load_op = c.sdl.SDL_GPU_LOADOP_CLEAR,
             .store_op = c.sdl.SDL_GPU_STOREOP_STORE,
         };
 
         // zgui.backend.prepareDrawData(@ptrCast(command_buffer));
+        //
 
-        const render_pass = c.sdl.SDL_BeginGPURenderPass(command_buffer, &color_target_info, 1, null) orelse {
-            return error.RenderPassCreationFailed;
-        };
-
-        self.*.render_pass = render_pass;
-
-        var it = self.pipelines.iterator();
-        while (it.next()) |entry| {
-            const pipeline = entry.value_ptr.*;
-            c.sdl.SDL_BindGPUGraphicsPipeline(self.render_pass, pipeline);
-        }
-    }
-
-    pub fn render(self: *Renderer, registry: *ecs.Registry, active_camera: ecs.Entity) !void {
-        const cmd_buf = self.command_buffers.items[0];
-
-        const camera = registry.get(components.Camera.CameraData, active_camera);
-
-        var view = registry.view(
-            .{ components.Transform.Transform, components.Mesh.MeshData },
-            .{},
-        );
-
-        var it = view.entityIterator();
-        while (it.next()) |entity| {
-            const mesh = view.get(components.Mesh.MeshData, entity);
-            const transform = view.get(components.Transform.Transform, entity);
-
-            if (registry.has(PipelineComponent, entity)) {
-                const pipeline_comp = registry.get(PipelineComponent, entity);
-                if (self.pipelines.get(pipeline_comp.handle)) |pipeline| {
-                    c.sdl.SDL_BindGPUGraphicsPipeline(self.render_pass.?, pipeline);
-                }
-            }
-
-            if (registry.has(components.Mesh.TextureData, entity)) {
-                const tex_data = view.get(components.Mesh.TextureData, entity).*;
-                c.sdl.SDL_BindGPUFragmentSamplers(
-                    self.render_pass.?,
-                    0,
-                    &(c.sdl.SDL_GPUTextureSamplerBinding{
-                        .texture = tex_data.texture,
-                        .sampler = tex_data.sampler,
-                    }),
-                    1,
-                );
-            }
-
-            components.Mesh.updateAndRender(
-                cmd_buf,
-                self.render_pass.?,
-                transform,
-                mesh,
-                camera,
-            );
-        }
+        // const padding: f32 = 0.1;
+        // const padding_x = @as(f32, @floatFromInt(self.window.getSize().width)) * padding;
+        // const padding_y = @as(f32, @floatFromInt(self.window.getSize().height)) * padding;
+        // const viewport = c.sdl.SDL_GPUViewport{
+        //     .x = padding_x,
+        //     .y = padding_y,
+        //     .w = @as(f32, @floatFromInt(self.window.getSize().width)) - (padding_x * 2),
+        //     .h = @as(f32, @floatFromInt(self.window.getSize().height)) - (padding_y * 2),
+        //     .max_depth = 1,
+        //     .min_depth = 0.1,
+        // };
+        // c.sdl.SDL_SetGPUViewport(self.render_pass, &viewport);
     }
 
     pub fn endFrame(self: *Renderer) !void {
-        if (self.render_pass) |pass| {
-            c.sdl.SDL_EndGPURenderPass(pass);
-            self.render_pass = null;
-        }
         for (self.command_buffers.items, 0..) |cmd_buf, i| {
-            if (!c.sdl.SDL_SubmitGPUCommandBuffer(cmd_buf))
+            if (!c.sdl.SDL_SubmitGPUCommandBuffer(cmd_buf)) {
                 std.log.err("Failed cmd_buf[{d}] {s} ", .{ i, c.sdl.SDL_GetError() });
+                return error.CommandBufferSubmit;
+            }
         }
 
         self.command_buffers.clearAndFree(); // reuse memory next frame
@@ -236,11 +205,7 @@ const GraphicsPipelineDesc = struct {
     wireframe: bool,
 };
 
-const PipelineComponent = struct {
-    handle: u32,
-};
-
-pub fn createGraphicsPipeline(renderer: *Renderer, desc: GraphicsPipelineDesc) !void {
+pub fn createGraphicsPipeline(renderer: *Renderer, desc: GraphicsPipelineDesc) !u32 {
     const shader_vert = desc.vertex_shader.module;
     const shader_frag = desc.fragment_shader.module;
 
@@ -263,6 +228,7 @@ pub fn createGraphicsPipeline(renderer: *Renderer, desc: GraphicsPipelineDesc) !
     const pipeline = c.sdl.SDL_CreateGPUGraphicsPipeline(renderer.device, &pipeline_info) orelse return error.PipelineCreationFailed;
     const id: u32 = renderer.pipelines.count();
     try renderer.pipelines.put(@intCast(id), pipeline);
+    return id;
 }
 
 pub fn createBuffer(
@@ -341,7 +307,6 @@ pub fn uploadTextureGPU(
         .offset = buffer_offset,
     };
 
-    // FIX: correct width and height parameters
     const texture_region = c.sdl.SDL_GPUTextureRegion{
         .texture = texture,
         .w = @intCast(image_size[0]),
