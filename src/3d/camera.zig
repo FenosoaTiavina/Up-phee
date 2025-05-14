@@ -1,16 +1,16 @@
 const std = @import("std");
-const c = @import("../imports.zig");
 
 const zm = @import("zmath");
 
-const T_ = @import("../types.zig");
+const c = @import("../imports.zig");
+const Types = @import("../types.zig");
 
 pub const Camera = struct {
-    position: T_.Vec4_f32,
-    front: T_.Vec4_f32,
-    up: T_.Vec4_f32,
-    world_up: T_.Vec4_f32,
-    right: T_.Vec4_f32,
+    position: Types.Vec4_f32,
+    front: Types.Vec4_f32,
+    up: Types.Vec4_f32,
+    world_up: Types.Vec4_f32,
+    right: Types.Vec4_f32,
     yaw: f32,
     pitch: f32,
     roll: f32,
@@ -18,9 +18,9 @@ pub const Camera = struct {
     sensitivity: f32,
     aspect: f32,
 
-    view_matrix: T_.Mat4_f32,
+    view_matrix: Types.Mat4_f32,
 
-    projection_matrix: T_.Mat4_f32,
+    projection_matrix: Types.Mat4_f32,
 
     // Field to choose movement system
     use_quaternion: bool,
@@ -34,14 +34,14 @@ pub fn init(
     aspect: f32,
     use_quaternion: bool,
 ) Camera {
-    const pos = T_.Vec4_f32{ position[0], position[1], position[2], 1.0 };
-    const tar = T_.Vec4_f32{ target[0], target[1], target[2], 1.0 };
+    const pos = Types.Vec4_f32{ position[0], position[1], position[2], 1.0 };
+    const tar = Types.Vec4_f32{ target[0], target[1], target[2], 1.0 };
     _ = tar; // autofix
 
-    const world_up = T_.Vec4_f32{ 0.0, 1.0, 0.0, 0.0 };
+    const world_up = Types.Vec4_f32{ 0.0, 1.0, 0.0, 0.0 };
 
     // Default front direction is -Z (OpenGL-style)
-    const default_front = T_.Vec4_f32{ 0.0, 0.0, 1.0, 0.0 };
+    const default_front = Types.Vec4_f32{ 0.0, 0.0, 1.0, 0.0 };
 
     // Calculate initial right vector
     const right = zm.normalize3(zm.cross3(default_front, world_up));
@@ -101,21 +101,21 @@ pub fn updateResize(camera: *Camera, aspect: f32) void {
     }
 }
 
-pub fn move(camera: *Camera, vec_move_amount: T_.Vec3_f32) void {
+pub fn move(camera: *Camera, vec_move_amount: Types.Vec3_f32) void {
     // Constrain movement to horizontal plane and vertical axes
     // Right vector (X axis in camera space)
-    const rightMovement = (T_.Vec4_f32{ camera.right[0], 0.0, camera.right[2], 0.0 } * zm.f32x4(vec_move_amount[0], vec_move_amount[0], vec_move_amount[0], 0.0));
+    const rightMovement = (Types.Vec4_f32{ camera.right[0], 0.0, camera.right[2], 0.0 } * zm.f32x4(vec_move_amount[0], vec_move_amount[0], vec_move_amount[0], 0.0));
 
     // Up is world up (Y axis in world space)
-    const upMovement = (T_.Vec4_f32{ 0.0, 1.0, 0.0, 0.0 } * zm.f32x4(vec_move_amount[1], vec_move_amount[1], vec_move_amount[1], 0.0));
+    const upMovement = (Types.Vec4_f32{ 0.0, 1.0, 0.0, 0.0 } * zm.f32x4(vec_move_amount[1], vec_move_amount[1], vec_move_amount[1], 0.0));
 
     // Front vector (Z axis in camera space) projected to horizontal plane
-    const frontMovement = (T_.Vec4_f32{ camera.front[0], 0.0, camera.front[2], 0.0 } * zm.f32x4(vec_move_amount[2], vec_move_amount[2], vec_move_amount[2], 0.0));
+    const frontMovement = (Types.Vec4_f32{ camera.front[0], 0.0, camera.front[2], 0.0 } * zm.f32x4(vec_move_amount[2], vec_move_amount[2], vec_move_amount[2], 0.0));
 
     // Normalize the horizontal front vector if not zero
     const frontLength = @sqrt(frontMovement[0] * frontMovement[0] + frontMovement[2] * frontMovement[2]);
     const normalizedFrontMovement = if (frontLength > 0.001)
-        (frontMovement * zm.splat(T_.Vec4_f32, 1.0 / frontLength))
+        (frontMovement * zm.splat(Types.Vec4_f32, 1.0 / frontLength))
     else
         frontMovement;
 
@@ -154,7 +154,7 @@ pub fn update(camera: *Camera) void {
 
 pub fn updateEuler(camera: *Camera) void {
     // Calculate front vector from yaw only (horizontal rotation)
-    var front: T_.Vec4_f32 = T_.Vec4_f32{ 0, 0, 0, 0 };
+    var front: Types.Vec4_f32 = Types.Vec4_f32{ 0, 0, 0, 0 };
     front[0] = @sin(std.math.degreesToRadians(camera.yaw));
     front[1] = 0.0; // No vertical component from yaw/pitch for movement
     front[2] = @cos(std.math.degreesToRadians(camera.yaw));
@@ -172,7 +172,7 @@ pub fn updateEuler(camera: *Camera) void {
     camera.up[3] = 0.0;
 
     // For the view matrix, we need the actual direction including pitch
-    var view_front: T_.Vec4_f32 = T_.Vec4_f32{ 0, 0, 0, 0 };
+    var view_front: Types.Vec4_f32 = Types.Vec4_f32{ 0, 0, 0, 0 };
     view_front[0] = @sin(std.math.degreesToRadians(camera.yaw)) * @cos(std.math.degreesToRadians(camera.pitch));
     view_front[1] = @sin(std.math.degreesToRadians(camera.pitch));
     view_front[2] = @cos(std.math.degreesToRadians(camera.yaw)) * @cos(std.math.degreesToRadians(camera.pitch));

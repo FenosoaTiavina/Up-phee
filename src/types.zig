@@ -627,9 +627,3 @@ pub const Color = extern struct {
         }
     }
 };
-
-pub const Vertex = extern struct {
-    pos: Point,
-    color: Color,
-    texcoord: Point = undefined,
-};

@@ -4,14 +4,14 @@ const ecs = @import("ecs");
 const zm = @import("zmath");
 const zgui = @import("zgui");
 
-const T_ = @import("types.zig");
+const Types = @import("types.zig");
 const c = @import("imports.zig");
 const Shader = @import("shader.zig");
 const uph3d = @import("./3d/3d.zig");
 
 pub const Window = struct {
     sdl_window: *c.sdl.SDL_Window,
-    window_dimension: T_.Size,
+    window_dimension: Types.Size,
     window_title: [*c]const u8,
 
     pub fn init(window_width: u32, window_height: u32, window_title: [*c]const u8) !Window {
@@ -25,12 +25,12 @@ pub const Window = struct {
 
         return Window{
             .sdl_window = window,
-            .window_dimension = T_.Size{ .width = @intCast(window_width), .height = @intCast(window_height) },
+            .window_dimension = Types.Size{ .width = @intCast(window_width), .height = @intCast(window_height) },
             .window_title = window_title,
         };
     }
 
-    pub fn getSize(self: *Window) T_.Size {
+    pub fn getSize(self: *Window) Types.Size {
         return self.window_dimension;
     }
     pub fn deinit(self: *Window) void {
@@ -44,10 +44,9 @@ pub const Renderer = struct {
     window: Window,
     device: *c.sdl.SDL_GPUDevice,
     default_sampler: *c.sdl.SDL_GPUSampler,
-    transfer_buffer: *c.sdl.SDL_GPUTransferBuffer,
-    command_buffers: std.ArrayList(*c.sdl.SDL_GPUCommandBuffer),
+    command_buffer: *c.sdl.SDL_GPUCommandBuffer = undefined,
     pipelines: std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline),
-    clear_color: T_.Vec4_f32,
+    clear_color: Types.Vec4_f32,
     target_info: c.sdl.SDL_GPUColorTargetInfo = undefined,
 
     pub fn init(allocator: std.mem.Allocator, width: u32, height: u32, title: [*:0]const u8) !*Renderer {
@@ -72,28 +71,16 @@ pub const Renderer = struct {
             return error.SamplerCreationFailed;
         };
 
-        const transfer = c.sdl.SDL_CreateGPUTransferBuffer(device, &.{
-            .usage = c.sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-            .size = 1024 * 1024 * 100,
-        }) orelse {
-            c.sdl.SDL_ReleaseGPUSampler(device, sampler);
-            c.sdl.SDL_DestroyGPUDevice(device);
-            window.deinit();
-            return error.TransferBufferCreationFailed;
-        };
-
         const renderer = try allocator.create(Renderer);
 
-        const default_color = T_.Vec4_f32{ 0, 0, 0, 1 };
+        const default_color = Types.Vec4_f32{ 0, 0, 0, 1 };
 
         renderer.* = Renderer{
             .allocator = allocator,
             .window = window,
             .device = device,
             .default_sampler = sampler,
-            .transfer_buffer = transfer,
             .clear_color = default_color,
-            .command_buffers = std.ArrayList(*c.sdl.SDL_GPUCommandBuffer).init(allocator),
             .pipelines = std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline).init(allocator),
         };
         return renderer;
@@ -111,9 +98,8 @@ pub const Renderer = struct {
         //     // No release needed? If yes, release here.
         //     _ = cmd_buf;
         // }
-        self.command_buffers.clearAndFree();
+        self.command_buffer.clearAndFree();
 
-        c.sdl.SDL_ReleaseGPUTransferBuffer(self.device, self.transfer_buffer);
         c.sdl.SDL_ReleaseGPUSampler(self.device, self.default_sampler);
 
         c.sdl.SDL_ReleaseWindowFromGPUDevice(self.device, self.window.sdl_window);
@@ -137,19 +123,17 @@ pub const Renderer = struct {
         };
     }
 
-    pub fn clear(self: *Renderer, color: T_.Vec4_f32) void {
+    pub fn clear(self: *Renderer, color: Types.Vec4_f32) void {
         self.clear_color = color;
     }
 
     pub fn beginFrame(self: *Renderer) !void {
-        const command_buffer = c.sdl.SDL_AcquireGPUCommandBuffer(self.device) orelse {
+        self.command_buffer = c.sdl.SDL_AcquireGPUCommandBuffer(self.device) orelse {
             return error.CommandBufferAcquisitionFailed;
         };
 
-        try self.command_buffers.append(command_buffer);
-
         var swapchain_texture: ?*c.sdl.SDL_GPUTexture = null;
-        if (c.sdl.SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, self.*.window.sdl_window, &swapchain_texture, null, null) == false) {
+        if (c.sdl.SDL_WaitAndAcquireGPUSwapchainTexture(self.command_buffer, self.*.window.sdl_window, &swapchain_texture, null, null) == false) {
             return error.SwapchainAcquisitionFailed;
         }
 
@@ -187,14 +171,10 @@ pub const Renderer = struct {
     }
 
     pub fn endFrame(self: *Renderer) !void {
-        for (self.command_buffers.items, 0..) |cmd_buf, i| {
-            if (!c.sdl.SDL_SubmitGPUCommandBuffer(cmd_buf)) {
-                std.log.err("Failed cmd_buf[{d}] {s} ", .{ i, c.sdl.SDL_GetError() });
-                return error.CommandBufferSubmit;
-            }
+        if (!c.sdl.SDL_SubmitGPUCommandBuffer(self.command_buffer)) {
+            std.log.err("Failed cmd_buf.Submit {s} ", .{c.sdl.SDL_GetError()});
+            return error.CommandBufferSubmit;
         }
-
-        self.command_buffers.clearAndFree(); // reuse memory next frame
     }
 };
 
@@ -288,7 +268,7 @@ pub fn uploadTextureGPU(
     buffer_offset: u32,
     comptime T: type,
     images_data: *[]u8,
-    image_size: T_.Vec2_usize,
+    image_size: Types.Vec2_usize,
     image_byte_size: usize,
 ) !void {
     // Map the buffer memory

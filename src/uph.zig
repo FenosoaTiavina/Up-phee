@@ -10,6 +10,3 @@ pub const Renderer = @import("./renderer.zig");
 pub const Shader = @import("./shader.zig");
 pub const Types = @import("./types.zig");
 pub const uph3d = @import("3d/3d.zig");
-pub const Maths = @import("utils/math.zig");
-
-// pub const Event = @import("./event.zig");

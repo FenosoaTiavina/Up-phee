@@ -16,14 +16,14 @@ const EventSystem = uph.Events;
 const Keys = EventSystem.keys.Keys;
 const InputSystem = EventSystem.input.InputSystem;
 
-const T_ = uph.Types;
+const Types = uph.Types;
 
 const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
 
 fn on_move_key(_: *EventSystem.EventManager, event_received: *EventSystem.EventMap, delta_time: *f32, ctx: *anyopaque) bool {
     const cam: *Components.Camera.Camera = @ptrCast(@alignCast(ctx));
-    var movement = T_.Vec3_f32{ 0.0, 0.0, 0.0 };
+    var movement = Types.Vec3_f32{ 0.0, 0.0, 0.0 };
 
     for (event_received.keys.items) |ev_k| {
         if (ev_k.code == .Key_W and ev_k.pressed) {
@@ -56,7 +56,7 @@ fn on_move_key(_: *EventSystem.EventManager, event_received: *EventSystem.EventM
         }
 
         // Scale movement by delta time and speed
-        const scaled_movement = T_.Vec3_f32{
+        const scaled_movement = Types.Vec3_f32{
             movement[0] * delta_time.* * cam.speed,
             movement[1] * delta_time.* * cam.speed,
             movement[2] * delta_time.* * cam.speed,

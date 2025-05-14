@@ -10,8 +10,6 @@ pub const uph_window_always_on_top = true;
 // Initialize the ECS registry
 var registry: ecs.Registry = undefined;
 
-var batch1: uph.uph3d.Batch = undefined;
-
 var camera_entity: ecs.Entity = undefined;
 
 var cam_data: *uph.uph3d.Camera.Camera = undefined;
@@ -36,7 +34,7 @@ pub fn init(ctx: uph.Context.Context) !void {
         .vertex_input_state = .{
             .vertex_buffer_descriptions = &uph.clib.sdl.SDL_GPUVertexBufferDescription{
                 .slot = 0,
-                .pitch = @sizeOf(uph.uph3d.Mesh.Vertex),
+                .pitch = @sizeOf(uph.uph3d.Objects.Vertex),
                 .input_rate = uph.clib.sdl.SDL_GPU_VERTEXINPUTRATE_VERTEX,
                 .instance_step_rate = 0,
             },
@@ -46,37 +44,20 @@ pub fn init(ctx: uph.Context.Context) !void {
                     .location = 0,
                     .buffer_slot = 0,
                     .format = uph.clib.sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-                    .offset = @offsetOf(uph.uph3d.Mesh.Vertex, "position"),
+                    .offset = @offsetOf(uph.uph3d.Objects.Vertex, "position"),
                 },
                 .{
                     .location = 1,
                     .buffer_slot = 0,
-                    .format = uph.clib.sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-                    .offset = @offsetOf(uph.uph3d.Mesh.Vertex, "color"),
-                },
-                .{
-                    .location = 2,
-                    .buffer_slot = 0,
                     .format = uph.clib.sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
-                    .offset = @offsetOf(uph.uph3d.Mesh.Vertex, "uv"),
+                    .offset = @offsetOf(uph.uph3d.Objects.Vertex, "uv"),
                 },
             },
             .num_vertex_attributes = 3,
         },
         .wireframe = false,
     });
-
-    batch1 = try uph.uph3d.Batch.init(ctx.allocator(), ctx.renderer(), g_id1, cam_data);
-
-    const cube_entt = registry.create();
-    registry.add(cube_entt, uph.uph3d.Shapes.Cube.cube());
-
-    var cube = registry.get(uph.uph3d.Shapes.Cube, cube_entt);
-
-    // Debug: Print the cube vertices to confirm they exist
-    std.debug.print("Adding cube with {d} vertices and {d} indices\n", .{ cube.vertices.len, cube.indices.len });
-
-    cube.addToBatch(&batch1);
+    _ = &g_id1; // autofix
 
     ctx.renderer().clear(uph.Types.Vec4_f32{
         0.28,
@@ -105,14 +86,11 @@ pub fn update(ctx: uph.Context.Context) !void {
 pub fn draw(ctx: uph.Context.Context) !void {
     _ = &ctx; // autofix
     // Debug: Print batch content information before drawing
-    std.debug.print("Batch contains {d} vertices and {d} indices\n", .{ batch1.vertices.items.len, batch1.indices.items.len });
 
-    try batch1.draw();
 }
 
 pub fn quit(ctx: uph.Context.Context) void {
     // your deinit code
     _ = ctx;
-    batch1.deinit();
     registry.deinit();
 }
