@@ -16,22 +16,22 @@ pub const Transform = struct {
         return transform;
     }
 
-    pub fn setPosition(self: *Transform, position: Types.Vec3_f32) void {
+    pub fn setPosition(self: *Transform, position: Types.Vec3_f32) *Transform {
         self.position = position;
-        self.updateModelMatrix();
+        return self.updateModelMatrix();
     }
 
-    pub fn setRotation(self: *Transform, rotation: Types.Vec3_f32) void {
+    pub fn setRotation(self: *Transform, rotation: Types.Vec3_f32) *Transform {
         self.rotation = rotation;
-        self.updateModelMatrix();
+        return self.updateModelMatrix();
     }
 
-    pub fn setScale(self: *Transform, scale: Types.Vec3_f32) void {
+    pub fn setScale(self: *Transform, scale: Types.Vec3_f32) *Transform {
         self.scale = scale;
-        self.updateModelMatrix();
+        return self.updateModelMatrix();
     }
 
-    pub fn rotate(self: *Transform, x: f32, y: f32, z: f32) void {
+    pub fn rotate(self: *Transform, x: f32, y: f32, z: f32) *Transform {
         self.rotation[0] += x;
         self.rotation[1] += y;
         self.rotation[2] += z;
@@ -41,17 +41,17 @@ pub const Transform = struct {
         self.rotation[1] = @mod(self.rotation[1], 360.0);
         self.rotation[2] = @mod(self.rotation[2], 360.0);
 
-        self.updateModelMatrix();
+        return self.updateModelMatrix();
     }
 
-    pub fn translate(self: *Transform, x: f32, y: f32, z: f32) void {
+    pub fn translate(self: *Transform, x: f32, y: f32, z: f32) *Transform {
         self.position[0] += x;
         self.position[1] += y;
         self.position[2] += z;
-        self.updateModelMatrix();
+        return self.updateModelMatrix();
     }
 
-    pub fn updateModelMatrix(self: *Transform) void {
+    pub fn updateModelMatrix(self: *Transform) *Transform {
         // Create rotation matrices from Euler angles (convert to radians)
         const rot_x = zm.rotationX(self.rotation[0] * (std.math.pi / 180.0));
         const rot_y = zm.rotationY(self.rotation[1] * (std.math.pi / 180.0));
@@ -69,5 +69,6 @@ pub const Transform = struct {
         // Combine transformations: Model = Scale * Rotation * Translation
         // First scale, then rotate, then translate
         self.model_matrix = zm.mul(zm.mul(scale, rotation), translation);
+        return @constCast(self);
     }
 };

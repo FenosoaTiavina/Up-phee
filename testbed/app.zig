@@ -14,6 +14,11 @@ var camera_entity: ecs.Entity = undefined;
 
 var cam_data: *uph.uph3d.Camera.Camera = undefined;
 
+var batch: *uph.uph3d.Batch.Batch = undefined;
+
+var c2: uph.uph3d.Cube = undefined;
+var c1: uph.uph3d.Cube = undefined;
+
 const log = std.log.scoped(.GAME);
 
 pub fn init(ctx: uph.Context.Context) !void {
@@ -30,7 +35,7 @@ pub fn init(ctx: uph.Context.Context) !void {
 
     const g_id1 = try uph.Renderer.createGraphicsPipeline(ctx.renderer(), .{
         .vertex_shader = try uph.Shader.loadShader(ctx.renderer().device, "assets/shaders/compiled/PositionColor.vert.spv", uph.clib.sdl.SDL_GPU_SHADERSTAGE_VERTEX, 1, 0, 0, 0),
-        .fragment_shader = try uph.Shader.loadShader(ctx.renderer().device, "assets/shaders/compiled/SolidColor.frag.spv", uph.clib.sdl.SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 0, 1),
+        .fragment_shader = try uph.Shader.loadShader(ctx.renderer().device, "assets/shaders/compiled/SolidColor.frag.spv", uph.clib.sdl.SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 0, 0),
         .vertex_input_state = .{
             .vertex_buffer_descriptions = &uph.clib.sdl.SDL_GPUVertexBufferDescription{
                 .slot = 0,
@@ -46,18 +51,14 @@ pub fn init(ctx: uph.Context.Context) !void {
                     .format = uph.clib.sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
                     .offset = @offsetOf(uph.uph3d.Objects.Vertex, "position"),
                 },
-                .{
-                    .location = 1,
-                    .buffer_slot = 0,
-                    .format = uph.clib.sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
-                    .offset = @offsetOf(uph.uph3d.Objects.Vertex, "uv"),
-                },
             },
-            .num_vertex_attributes = 3,
+            .num_vertex_attributes = 1,
         },
         .wireframe = false,
     });
     _ = &g_id1; // autofix
+
+    batch = try uph.uph3d.Batch.Batch.init(ctx, g_id1, cam_data);
 
     ctx.renderer().clear(uph.Types.Vec4_f32{
         0.28,
@@ -65,6 +66,13 @@ pub fn init(ctx: uph.Context.Context) !void {
         0.28,
         1.00,
     });
+
+    c2 = uph.uph3d.Cube.cube();
+    c1 = uph.uph3d.Cube.cube();
+
+    try c2.addToBatch(batch);
+
+    try c2.addToBatch(batch);
 }
 
 pub fn event(ctx: uph.Context.Context, e: uph.Input.Event) !void {
@@ -86,11 +94,12 @@ pub fn update(ctx: uph.Context.Context) !void {
 pub fn draw(ctx: uph.Context.Context) !void {
     _ = &ctx; // autofix
     // Debug: Print batch content information before drawing
-
+    try batch.draw(ctx.deltaTime() * 0.9);
 }
 
 pub fn quit(ctx: uph.Context.Context) void {
     // your deinit code
     _ = ctx;
     registry.deinit();
+    batch.deinit();
 }

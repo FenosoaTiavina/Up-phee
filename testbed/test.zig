@@ -8,7 +8,7 @@ const zgui = uph.zgui;
 const zmath = uph.zmath;
 
 const c = uph.clib;
-const Renderer = uph.Renderer;
+const RenderManager = uph.Renderer;
 const shader = uph.Shader;
 const Components = uph.Components;
 
@@ -101,7 +101,7 @@ pub fn main() !void {
     // Initialize the ECS registry
     var registry = ecs.Registry.init(allocator);
 
-    var game_renderer = try Renderer.Renderer.init(allocator, WINDOW_WIDTH, WINDOW_HEIGHT, "HEHE");
+    var game_renderer = try RenderManager.RenderManager.init(allocator, WINDOW_WIDTH, WINDOW_HEIGHT, "HEHE");
     defer game_renderer.deinit();
 
     // Initialize zgui
@@ -164,7 +164,7 @@ pub fn main() !void {
     const texture = try Components.Mesh.createTextureComponent(&game_renderer, "assets/kenney_prototypeTextures/PNG/Purple/texture_10.png");
     registry.add(quad_entity, texture);
 
-    try Renderer.createGraphicsPipeline(&game_renderer, .{
+    try RenderManager.createGraphicsPipeline(&game_renderer, .{
         .vertex_shader = try shader.Shader.loadShader(game_renderer.device, "assets/shaders/compiled/PositionColor.vert.spv", c.sdl.SDL_GPU_SHADERSTAGE_VERTEX, 1, 0, 0, 0),
         .fragment_shader = try shader.Shader.loadShader(game_renderer.device, "assets/shaders/compiled/SolidColor.frag.spv", c.sdl.SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 0, 1),
         .vertex_input_state = .{
@@ -327,7 +327,7 @@ pub fn main() !void {
 
         try game_renderer.beginFrame();
         try game_renderer.render(&registry, camera_entity);
-        try game_renderer.endFrame();
+        try game_renderer.submitFrame();
     }
 
     registry.deinit();
