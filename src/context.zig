@@ -139,6 +139,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
         _window: *uph.Renderer.Window = undefined,
         // RenderManager instance
         _renderer: *uph.Renderer.RenderManager = undefined,
+
         _aspect_ratio: f32 = undefined,
 
         // High DPI stuff
@@ -226,8 +227,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
             self._delta_time = @as(f32, @floatFromInt(new_ticks - self._last_tick)) / 1000;
             self._last_tick = new_ticks;
 
-            std.log.debug("delta t {any}", .{self._delta_time});
-
             // Do rendering
             if (self._renderer.pipelines.count() > 0) {
 
@@ -285,6 +284,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
                 // Game event processing
                 const we = uph.Input.Event.from(ne);
+                uph.Input.input_manager.update(we);
 
                 // Passed to game code
                 eventFn(self._ctx, we) catch |err| {

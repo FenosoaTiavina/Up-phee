@@ -1,0 +1,317 @@
+
+Front
+(-0.5, 0.5) (0.5,0.5)
+   0.___________.3
+    |           |
+    |           |
+    |           |
+   1.___________.2
+(-0.5, -0.5) (0.5,-0.5)
+
+Back
+(-0.5, 0.5) (0.5,0.5)
+   7.___________.4
+    |           |
+    |           |
+    |           |
+   6.___________.5
+(-0.5, -0.5) (0.5,-0.5)
+
+
+
+
+
+
+
+
+
+
+const std = @import("std");
+const math = @import("std").math;
+const Allocator = std.mem.Allocator;
+const Vec3 = @Vector(3, f32);
+const Mat4 = [4][4]f32;
+
+/// A smooth camera component with look-at functionality and smooth movement/rotation
+pub const Camera = struct {
+    // Camera positioning
+    position: Vec3,
+    target: Vec3,
+    up: Vec3,
+    
+    // Movement parameters
+    move_speed: f32,
+    rotation_speed: f32,
+    
+    // Smoothing parameters
+    position_smoothing: f32,
+    rotation_smoothing: f32,
+    
+    // Target position and rotation (for smooth interpolation)
+    target_position: Vec3,
+    target_rotation: Vec3, // Euler angles (pitch, yaw, roll)
+    current_rotation: Vec3,
+    
+    // Matrices
+    view_matrix: Mat4,
+    projection_matrix: Mat4,
+    
+    // Field of view, aspect ratio, near and far planes
+    fov: f32,
+    aspect_ratio: f32,
+    near: f32,
+    far: f32,
+    
+    /// Initialize a new camera
+    pub fn init(
+        position: Vec3,
+        target: Vec3,
+        up: Vec3,
+        fov: f32,
+        aspect_ratio: f32,
+        near: f32,
+        far: f32,
+    ) Camera {
+        var camera = Camera{
+            .position = position,
+            .target = target,
+            .up = up,
+            .move_speed = 5.0,
+            .rotation_speed = 1.0,
+            .position_smoothing = 5.0,
+            .rotation_smoothing = 5.0,
+            .target_position = position,
+            .target_rotation = Vec3{ 0, 0, 0 },
+            .current_rotation = Vec3{ 0, 0, 0 },
+            .view_matrix = undefined,
+            .projection_matrix = undefined,
+            .fov = fov,
+            .aspect_ratio = aspect_ratio,
+            .near = near,
+            .far = far,
+        };
+        
+        camera.updateViewMatrix();
+        camera.updateProjectionMatrix();
+        
+        return camera;
+    }
+    
+    /// Update the camera's state based on delta time
+    pub fn update(self: *Camera, dt: f32) void {
+        // Smooth position interpolation
+        const position_factor = 1.0 - math.exp(-self.position_smoothing * dt);
+        self.position = self.position + (self.target_position - self.position) * @splat(3, position_factor);
+        
+        // Smooth rotation interpolation
+        const rotation_factor = 1.0 - math.exp(-self.rotation_smoothing * dt);
+        self.current_rotation = self.current_rotation + (self.target_rotation - self.current_rotation) * @splat(3, rotation_factor);
+        
+        // Update the target based on the camera's rotation
+        self.updateTargetFromRotation();
+        
+        // Update matrices
+        self.updateViewMatrix();
+    }
+    
+    /// Move the camera in a specific direction (forward, right, up)
+    pub fn move(self: *Camera, direction: Vec3, dt: f32) void {
+        const forward = normalize(self.target - self.position);
+        const right = normalize(cross(forward, self.up));
+        const up = normalize(cross(right, forward));
+        
+        var movement = Vec3{ 0, 0, 0 };
+        
+        // Scale by direction input
+        movement += forward * @splat(3, direction[0]);
+        movement += right * @splat(3, direction[1]);
+        movement += up * @splat(3, direction[2]);
+        
+        // Normalize if movement is not zero
+        const len = length(movement);
+        if (len > 0.001) {
+            movement = movement / @splat(3, len);
+        }
+        
+        // Update target position
+        self.target_position += movement * @splat(3, self.move_speed * dt);
+    }
+    
+    /// Rotate the camera based on mouse or input delta (pitch, yaw)
+    pub fn rotate(self: *Camera, pitch_delta: f32, yaw_delta: f32, dt: f32) void {
+        // Update target rotation
+        self.target_rotation[0] += pitch_delta * self.rotation_speed * dt;
+        self.target_rotation[1] += yaw_delta * self.rotation_speed * dt;
+        
+        // Limit pitch to avoid gimbal lock
+        self.target_rotation[0] = clamp(self.target_rotation[0], -math.pi / 2.0 + 0.1, math.pi / 2.0 - 0.1);
+    }
+    
+    /// Look at a specific target point
+    pub fn lookAt(self: *Camera, target_pos: Vec3) void {
+        self.target = target_pos;
+        
+        // Calculate rotation from position and target
+        const dir = normalize(target_pos - self.position);
+        
+        // Calculate pitch and yaw from direction
+        const pitch = math.asin(-dir[1]);
+        const yaw = math.atan2(dir[0], dir[2]);
+        
+        self.target_rotation = Vec3{ pitch, yaw, 0 };
+        self.updateViewMatrix();
+    }
+    
+    /// Update the target position based on current rotation
+    fn updateTargetFromRotation(self: *Camera) void {
+        const pitch = self.current_rotation[0];
+        const yaw = self.current_rotation[1];
+        
+        // Convert spherical to Cartesian coordinates
+        const x = math.cos(pitch) * math.sin(yaw);
+        const y = math.sin(pitch);
+        const z = math.cos(pitch) * math.cos(yaw);
+        
+        const dir = Vec3{ x, y, z };
+        self.target = self.position + dir;
+    }
+    
+    /// Update the view matrix
+    fn updateViewMatrix(self: *Camera) void {
+        self.view_matrix = lookAtMatrix(self.position, self.target, self.up);
+    }
+    
+    /// Update the projection matrix
+    pub fn updateProjectionMatrix(self: *Camera) void {
+        self.projection_matrix = perspectiveMatrix(self.fov, self.aspect_ratio, self.near, self.far);
+    }
+    
+    /// Set a new aspect ratio (when window resizes)
+    pub fn setAspectRatio(self: *Camera, aspect_ratio: f32) void {
+        self.aspect_ratio = aspect_ratio;
+        self.updateProjectionMatrix();
+    }
+};
+
+/// Create a view matrix from position, target, and up vector
+fn lookAtMatrix(eye: Vec3, center: Vec3, up: Vec3) Mat4 {
+    const f = normalize(center - eye);
+    const s = normalize(cross(f, up));
+    const u = cross(s, f);
+    
+    return Mat4{
+        [4]f32{ s[0], u[0], -f[0], 0.0 },
+        [4]f32{ s[1], u[1], -f[1], 0.0 },
+        [4]f32{ s[2], u[2], -f[2], 0.0 },
+        [4]f32{
+            -dot(s, eye),
+            -dot(u, eye),
+            dot(f, eye),
+            1.0,
+        },
+    };
+}
+
+/// Create a perspective projection matrix
+fn perspectiveMatrix(fov: f32, aspect: f32, near: f32, far: f32) Mat4 {
+    const tan_half_fov = math.tan(fov / 2.0);
+    const f = 1.0 / tan_half_fov;
+    
+    return Mat4{
+        [4]f32{ f / aspect, 0.0, 0.0, 0.0 },
+        [4]f32{ 0.0, f, 0.0, 0.0 },
+        [4]f32{
+            0.0,
+            0.0,
+            far / (near - far),
+            -1.0,
+        },
+        [4]f32{
+            0.0,
+            0.0,
+            (near * far) / (near - far),
+            0.0,
+        },
+    };
+}
+
+/// Vector cross product
+fn cross(a: Vec3, b: Vec3) Vec3 {
+    return Vec3{
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    };
+}
+
+/// Vector dot product
+fn dot(a: Vec3, b: Vec3) f32 {
+    const prod = a * b;
+    return prod[0] + prod[1] + prod[2];
+}
+
+/// Vector length
+fn length(v: Vec3) f32 {
+    return math.sqrt(dot(v, v));
+}
+
+/// Normalize a vector
+fn normalize(v: Vec3) Vec3 {
+    const len = length(v);
+    if (len < 0.0001) {
+        return Vec3{ 0, 0, 0 };
+    }
+    return v / @splat(3, len);
+}
+
+/// Clamp a value between min and max
+fn clamp(value: f32, min: f32, max: f32) f32 {
+    return @max(min, @min(value, max));
+}
+
+/// Example usage of the camera
+pub fn example() !void {
+    // Create a camera
+    var camera = Camera.init(
+        Vec3{ 0, 2, 5 },  // position
+        Vec3{ 0, 0, 0 },  // target
+        Vec3{ 0, 1, 0 },  // up
+        math.pi / 4.0,    // fov
+        16.0 / 9.0,       // aspect ratio
+        0.1,              // near
+        100.0,            // far
+    );
+    
+    // Set up a game loop
+    var last_time: f32 = 0;
+    var running = true;
+    
+    while (running) {
+        // Calculate delta time
+        const current_time: f32 = @floatCast(std.time.milliTimestamp()) / 1000.0;
+        const dt = current_time - last_time;
+        last_time = current_time;
+        
+        // Example: Process inputs (replace with your actual input handling)
+        // const movement = Vec3{ forward, right, up };
+        const movement = Vec3{ 0, 0, 0 };  // No movement
+        const pitch_delta: f32 = 0.0;      // No pitch rotation
+        const yaw_delta: f32 = 0.0;        // No yaw rotation
+        
+        // Update camera movement and rotation
+        camera.move(movement, dt);
+        camera.rotate(pitch_delta, yaw_delta, dt);
+        
+        // Update camera state
+        camera.update(dt);
+        
+        // Use the camera matrices for rendering
+        const view_matrix = camera.view_matrix;
+        const projection_matrix = camera.projection_matrix;
+        
+        // Your rendering code here...
+        
+        // Break the loop for this example
+        break;
+    }
+}

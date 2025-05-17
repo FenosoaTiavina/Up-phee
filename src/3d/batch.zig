@@ -6,11 +6,11 @@ const Transform = uph.uph3d.Transform;
 const c = uph.clib;
 
 // Debug mode - set to false for production
-const DEBUG = false;
+const DEBUG = true;
 
 // Maximum vertex count - adjust based on your needs
 const MAX_VERTEX = 3 * 1024 * 1024;
-const MAX_INDEX = 6 * 1024 * 1024; // Allowing for more indices than vertices
+const MAX_INDEX = MAX_VERTEX * 2; // Allowing for more indices than vertices
 
 pub const BatchError = error{
     NullRenderPass,
@@ -28,6 +28,8 @@ pub const Batch = struct {
     indices: std.ArrayList(Objects.Index),
 
     base_index: u16 = 0,
+    indices_count: u32 = 0,
+
     atlas: ?Assets.TextureData,
     pipeline_handle: u32,
     camera: *uph.uph3d.Camera.Camera = undefined,
@@ -90,14 +92,12 @@ pub const Batch = struct {
         self.ctx.allocator().destroy(self);
     }
     pub fn draw(self: *Batch, delta_t: f32) !void {
+        _ = delta_t; // autofix
         // Ensure we have something to draw
         if (self.meshes.items.len == 0) {
             if (DEBUG) std.debug.print("Warning: Attempted to draw empty batch\n", .{});
             return BatchError.EmptyBatch;
         }
-
-        if (DEBUG) std.log.debug("Vertices: {any}\n", .{self.vertices.items});
-        if (DEBUG) std.log.debug("Indices:  {any}\n", .{self.indices.items});
 
         // Get command buffer
         const upload_cmd = try self.ctx.renderer().getCommandBuffer(self.draw_cmd_buf);
@@ -109,16 +109,6 @@ pub const Batch = struct {
         const copy_pass = c.sdl.SDL_BeginGPUCopyPass(upload_cmd.command_buffer);
         if (copy_pass == null) return error.CopyPassFailed;
 
-        // var vertex_offset: u32 = 0;
-        // var index_offset: u32 = 0;
-        // var total_indices: u32 = 0;
-        // var total_vertices: u32 = 0;
-
-        // Upload all mesh data to GPU
-        // for (self.meshes.items) |msh| {
-        //     if (DEBUG) std.debug.print("Uploading mesh: {d} vertices, {d} indices\n", .{ msh.vertices.len, msh.indices.len });
-        //
-        // Upload vertices
         try uph.Renderer.uploadToGPU(
             self.ctx.renderer().device,
             copy_pass.?,
@@ -135,16 +125,10 @@ pub const Batch = struct {
             copy_pass.?,
             self.transfer_buffer,
             0,
-            u16,
+            Objects.Index,
             self.indices.items,
             self.gpu.ibo,
         );
-
-        //     vertex_offset += @intCast(msh.vertices.len * @sizeOf(Objects.Vertex));
-        //     index_offset += @intCast(msh.indices.len * @sizeOf(Objects.Index));
-        //     total_indices += msh.num_indices;
-        //     total_vertices += @intCast(msh.vertices.len);
-        // // }
 
         // End copy pass
         c.sdl.SDL_EndGPUCopyPass(copy_pass);
@@ -153,7 +137,7 @@ pub const Batch = struct {
 
         const draw_cmd = try self.ctx.renderer().getCommandBuffer(self.draw_cmd_buf);
 
-        if (DEBUG) std.debug.print("Total vertices: {d}, Total indices: {d}\n", .{ self.vertices.items.len, self.indices.items.len });
+        // if (DEBUG) std.debug.print("Total vertices: {d}, Total indices: {d}\n", .{ self.vertices.items.len, self.indices.items.len });
 
         // Begin render pass
         const render_pass = c.sdl.SDL_BeginGPURenderPass(draw_cmd.command_buffer, &self.ctx.renderer().target_info, 1, null);
@@ -168,10 +152,11 @@ pub const Batch = struct {
 
         // Setup transform and uniform buffer data
         var trs = Transform.Transform.init();
+        _ = &trs;
         const ubo = Objects.UniformBufferObject{
-            .model = trs.rotate(100, delta_t * 10, 0).model_matrix,
+            .model = trs.model_matrix,
             .view = self.camera.view_matrix,
-            .projection = self.camera.projection_matrix,
+            .projection = self.camera.projection.getProjection(),
         };
 
         // Push uniform data
@@ -180,19 +165,13 @@ pub const Batch = struct {
         // Ensure we have indices to draw
         if (self.indices.items.len == 0) return BatchError.InvalidIndexCount;
 
-        // Draw the primitives
-        c.sdl.SDL_DrawGPUIndexedPrimitives(
-            render_pass,
-            @intCast(self.indices.items.len), // Index count
-            1,
-            0, // Instance count (1 if no instancing)
-            0, // First index
-            0, // Vertex offset
-        );
-        // End render pass
+        c.sdl.SDL_DrawGPUIndexedPrimitives(render_pass, self.indices_count, 1, 0, 0, 0);
         c.sdl.SDL_EndGPURenderPass(render_pass);
     }
     pub fn add(self: *Batch, mesh: Objects.Mesh) !void {
+        if (DEBUG) std.log.debug("Vertices: {any}\n", .{self.vertices.items});
+        if (DEBUG) std.log.debug("Indices:  {any}\n", .{self.indices.items});
+
         const allocator = self.ctx.allocator();
 
         // Check if adding this mesh would exceed buffer limits
@@ -224,8 +203,18 @@ pub const Batch = struct {
         try self.vertices.appendSlice(mesh_ptr.*.vertices);
         try self.indices.appendSlice(mesh_ptr.*.indices);
         self.base_index += @intCast(mesh.vertices.len);
+        self.indices_count += @intCast(mesh_ptr.indices.len);
 
-        if (DEBUG) std.debug.print("Added mesh with {d} vertices and {d} indices. New base_index: {d}\n", .{ mesh.vertices.len, mesh.indices.len, self.base_index });
+        if (DEBUG) std.debug.print("Vertices :{any}\nIndices: {any}\n", .{
+            self.vertices.items,
+            self.indices.items,
+        });
+        if (DEBUG) std.debug.print("Added mesh with {d} vertices and {d} indices. New base_index: {d}\n Indices count : {d}\n", .{
+            mesh.vertices.len,
+            mesh.indices.len,
+            self.base_index,
+            self.indices_count,
+        });
     }
 
     pub fn clear(self: *Batch) void {

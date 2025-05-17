@@ -1,6 +1,8 @@
 const std = @import("std");
 const assert = std.debug.assert;
 const uph = @import("uph.zig");
+const c = uph.clib;
+
 const sdl = uph.clib.sdl;
 
 pub const WindowEvent = struct {
@@ -92,7 +94,6 @@ pub const KeyModifierBit = enum(u16) {
     ///scroll lock (= previous value sdl.SDL_KMOD_RESERVED)
     scroll_lock = sdl.SDL_KMOD_SCROL,
 };
-
 pub const KeyModifierSet = struct {
     storage: u16,
 
@@ -109,20 +110,26 @@ pub const KeyModifierSet = struct {
         self.storage &= ~@intFromEnum(modifier);
     }
 };
-
 pub const KeyboardEvent = struct {
     pub const KeyState = enum(u8) {
         released = 0,
         pressed = 1,
     };
-
     timestamp: u64,
     window_id: u32,
     key_state: KeyState,
     is_repeat: bool,
     scancode: Scancode,
     keycode: Keycode,
+    keys: KeyboardState,
     modifiers: KeyModifierSet,
+
+    grabbed: bool,
+    relative: bool,
+
+    pub fn has(self: *const KeyboardEvent, key: Keycode) bool {
+        return self.keys.isPressed(@enumFromInt(sdl.SDL_GetScancodeFromKey(@intFromEnum(key), null)));
+    }
 
     pub fn fromNative(native: sdl.SDL_KeyboardEvent) KeyboardEvent {
         switch (native.type) {
@@ -137,6 +144,9 @@ pub const KeyboardEvent = struct {
             .scancode = @enumFromInt(native.scancode),
             .keycode = @enumFromInt(native.key),
             .modifiers = KeyModifierSet.fromNative(native.mod),
+            .keys = getKeyboardState(),
+            .relative = sdl.SDL_GetWindowRelativeMouseMode(sdl.SDL_GetWindowFromID(native.windowID)),
+            .grabbed = sdl.SDL_GetWindowMouseGrab(sdl.SDL_GetWindowFromID(native.windowID)),
         };
     }
 };
@@ -148,7 +158,6 @@ pub const MouseButton = enum(u3) {
     extra_1 = sdl.SDL_BUTTON_X1,
     extra_2 = sdl.SDL_BUTTON_X2,
 };
-
 pub const MouseButtonState = struct {
     pub const NativeBitField = u32;
     pub const Storage = u5;
@@ -187,6 +196,9 @@ pub const MouseMotionEvent = struct {
 
     pos: uph.Types.Point,
 
+    grabbed: bool,
+    relative: bool,
+
     /// difference of position since last reported MouseMotionEvent,
     /// ignores screen boundaries if relative mouse mode is enabled
     delta: uph.Types.Point,
@@ -200,12 +212,15 @@ pub const MouseMotionEvent = struct {
         const canvas_scale = getCanvasScale();
         const delta_x: f32 = native.xrel * canvas_scale;
         const delta_y: f32 = native.yrel * canvas_scale;
+
         return .{
             .timestamp = native.timestamp,
             .window_id = native.windowID,
             .mouse_instance_id = native.which,
             .button_state = MouseButtonState.fromNative(native.state),
             .pos = pos,
+            .relative = sdl.SDL_GetWindowRelativeMouseMode(sdl.SDL_GetWindowFromID(native.windowID)),
+            .grabbed = sdl.SDL_GetWindowMouseGrab(sdl.SDL_GetWindowFromID(native.windowID)),
             .delta = .{ .x = delta_x, .y = delta_y },
         };
     }
@@ -320,7 +335,6 @@ pub const JoyAxisEvent = struct {
         return @as(FloatType, @floatFromInt(self.value)) / @abs(denominator);
     }
 };
-
 pub const JoyHatEvent = struct {
     pub const HatValue = enum(u8) {
         centered = sdl.SDL_HAT_CENTERED,
@@ -352,7 +366,6 @@ pub const JoyHatEvent = struct {
         };
     }
 };
-
 pub const JoyBallEvent = struct {
     timestamp: u64,
     joystick_id: sdl.SDL_JoystickID,
@@ -374,7 +387,6 @@ pub const JoyBallEvent = struct {
         };
     }
 };
-
 pub const JoyButtonEvent = struct {
     pub const ButtonState = enum(u8) {
         released = 0,
@@ -399,7 +411,6 @@ pub const JoyButtonEvent = struct {
         };
     }
 };
-
 pub const ControllerAxisEvent = struct {
     timestamp: u64,
     joystick_id: sdl.SDL_JoystickID,
@@ -427,7 +438,6 @@ pub const ControllerAxisEvent = struct {
         return @as(FloatType, @floatFromInt(self.value)) / @abs(denominator);
     }
 };
-
 pub const ControllerButtonEvent = struct {
     pub const ButtonState = enum(u8) {
         released = 0,
@@ -637,6 +647,45 @@ pub const Event = union(enum) {
             sdl.SDL_EVENT_USER => Event{ .user = UserEvent.from(raw.user) },
             else => Event{ .unkown = {} },
         };
+    }
+};
+
+pub const InputManager = struct {
+    key_state: [@typeInfo(Keycode).@"enum".fields.len]KeyboardEvent.KeyState = .{.released} ** @typeInfo(Keycode).@"enum".fields.len,
+
+    pub fn init() InputManager {
+        return InputManager{};
+    }
+
+    pub fn update(self: *InputManager, event: Event) void {
+        switch (event) {
+            .key_down => {
+                const key = event.key_down.keycode;
+                if (@as(u64, @intFromEnum(key)) < @as(u64, @typeInfo(Keycode).@"enum".fields.len)) self.key_state[@intFromEnum(key)] = .pressed;
+            },
+            .key_up => {
+                const key = event.key_up.keycode;
+                if (@as(u64, @intFromEnum(key)) < @as(u64, @typeInfo(Keycode).@"enum".fields.len)) self.key_state[@intFromEnum(key)] = .released;
+            },
+            else => {},
+        }
+    }
+
+    pub fn isKeyDown(self: *const InputManager, key: Keycode) bool {
+        return @as(u64, @intFromEnum(key)) < @as(u64, @typeInfo(Keycode).@"enum".fields.len) and self.key_state[@intFromEnum(key)] == .pressed;
+    }
+
+    pub fn isComboDown(self: *const InputManager, keys: []const Keycode) bool {
+        for (keys) |k| {
+            if (!self.isKeyDown(k)) return false;
+        }
+        return true;
+    }
+
+    pub fn clear(self: *InputManager) void {
+        for (self.key_state) |*state| {
+            state.* = false;
+        }
     }
 };
 
@@ -971,10 +1020,10 @@ pub const Scancode = enum(sdl.SDL_Scancode) {
 };
 
 pub const KeyboardState = struct {
-    states: []const u8,
+    states: []const bool,
 
     pub fn isPressed(ks: KeyboardState, scancode: Scancode) bool {
-        return ks.states[@intCast(@intFromEnum(scancode))] != 0;
+        return ks.states[@intCast(@intFromEnum(scancode))];
     }
 };
 
@@ -1346,10 +1395,13 @@ pub const GameController = struct {
     };
 };
 
-var ctx: uph.Context.Context = undefined;
+// struct
+pub var ctx: uph.Context.Context = undefined;
+pub var input_manager: InputManager = undefined;
 
 pub fn init(_ctx: uph.Context.Context) void {
     ctx = _ctx;
+    input_manager = InputManager.init();
 }
 
 inline fn getCanvasScale() f32 {

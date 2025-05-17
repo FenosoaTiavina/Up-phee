@@ -293,6 +293,8 @@ pub fn createGraphicsPipeline(renderer: *RenderManager, desc: GraphicsPipelineDe
         },
         .primitive_type = c.sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .rasterizer_state = .{
+            .cull_mode = c.sdl.SDL_GPU_CULLMODE_NONE,
+            .front_face = c.sdl.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
             .fill_mode = if (desc.wireframe) c.sdl.SDL_GPU_FILLMODE_LINE else c.sdl.SDL_GPU_FILLMODE_FILL,
         },
     };
