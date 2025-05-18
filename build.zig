@@ -14,6 +14,10 @@ pub const UphOptions = struct {
 
 pub const Plugin = []const u8;
 
+const LibMod = struct {
+    module: *std.Build.Module,
+    artifact: *std.Build.Step.Compile,
+};
 const AppOptions = struct {
     additional_deps: []const Dependency = &.{},
     dep_name: ?[]const u8 = "uph",
@@ -24,30 +28,50 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
-    const testbed = createUphApp(
+    var uph = getLibrary(b, target, optimize, UphOptions{ .link_dynamic = true });
+
+    const testbed = createApp(
         b,
         target,
         optimize,
         "testbed",
         "testbed/app.zig",
+        &uph,
+        .{ .plugins = &.{"test_hotreload"} },
+    );
+
+    const install_uph = b.addInstallArtifact(
+        uph.artifact,
         .{
-            .plugins = &.{"test_hotreload"},
+            .dest_dir = .{ .override = .{ .custom = "../bin" } },
         },
     );
 
-    setupRunStep(b, testbed);
+    setupCompileStep(b, "uph", install_uph);
+
+    const install_cmd = b.addInstallArtifact(
+        testbed,
+        .{
+            .dest_dir = .{ .override = .{ .custom = "../bin" } },
+        },
+    );
+
+    install_cmd.step.dependOn(&install_uph.step);
+
+    setupCompileStep(b, "testbed", install_cmd);
+
+    setupRunStep(b, install_cmd.artifact);
 }
 
-pub fn createUphApp(
+pub fn createApp(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     app_name: []const u8,
     app_root: []const u8,
+    uph: *LibMod,
     opt: AppOptions,
 ) *std.Build.Step.Compile {
-    const uph = getLibrary(b, target, optimize, UphOptions{ .link_dynamic = true });
-
     const game = b.createModule(.{
         .root_source_file = b.path(app_root),
         .target = target,
@@ -79,40 +103,30 @@ pub fn createUphApp(
             b.fmt("testbed/plugins/{s}.zig", .{pname}),
             target,
             optimize,
+            uph,
             .{ .dep_name = null, .link_dynamic = true },
         );
         const install_plugin = b.addInstallArtifact(
             plugin,
             .{
                 .dest_dir = .{
-                    .override = .{ .custom = "bin" },
+                    .override = .{ .custom = "../bin" },
                 },
             },
         );
-        b.step(pname, b.fmt("compile plugin {s}", .{pname})).dependOn(&install_plugin.step);
+        b.step(b.fmt("plug-{s}", .{pname}), b.fmt("compile plugin: {s}", .{pname})).dependOn(&install_plugin.step);
         install_plugin.step.dependOn(&exe.step);
     }
-
-    const install_uph = b.addInstallArtifact(
-        uph.artifact,
-        .{
-            .dest_dir = .{
-                .override = .{ .custom = "bin" },
-            },
-        },
-    );
-
-    b.installArtifact(exe);
-
-    exe.step.dependOn(&install_uph.step);
 
     return exe;
 }
 
-pub fn getLibrary(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, opt: UphOptions) struct {
-    module: *std.Build.Module,
-    artifact: *std.Build.Step.Compile,
-} {
+pub fn getLibrary(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    opt: UphOptions,
+) LibMod {
     const bos = b.addOptions();
     bos.addOption(bool, "link_dynamic", opt.link_dynamic);
 
@@ -148,11 +162,11 @@ pub fn getLibrary(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std
     );
     uph_mod.linkSystemLibrary("sdl3", .{});
 
-    var lib: *std.Build.Step.Compile = undefined;
-    lib = if (opt.link_dynamic)
-        b.addSharedLibrary(.{ .name = "uph", .root_module = uph_mod })
-    else
-        b.addStaticLibrary(.{ .name = "uph", .root_module = uph_mod });
+    const lib: *std.Build.Step.Compile = b.addLibrary(.{
+        .name = "uph",
+        .root_module = uph_mod,
+        .linkage = if (opt.link_dynamic) .dynamic else .static,
+    });
 
     return .{ .module = uph_mod, .artifact = lib };
 }
@@ -163,14 +177,11 @@ pub fn createPlugin(
     plugin_root: []const u8,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.Mode,
+    uph: *LibMod,
     opt: UphOptions,
 ) *std.Build.Step.Compile {
     std.debug.assert(target.result.os.tag == .windows or target.result.os.tag == .linux or target.result.os.tag == .macos);
     std.debug.assert(opt.link_dynamic);
-    const uph = getLibrary(b, target, optimize, .{
-        .dep_name = opt.dep_name,
-        .link_dynamic = opt.link_dynamic,
-    });
 
     // Create plugin module
     const plugin = b.createModule(.{
@@ -187,7 +198,7 @@ pub fn createPlugin(
     }
 
     // Create root module
-    const builder = getuphBuilder(b, opt.dep_name);
+    const builder = getUphBuilder(b, opt.dep_name);
     const root = b.createModule(.{
         .root_source_file = builder.path("src/plugin_entry.zig"),
         .target = target,
@@ -205,30 +216,31 @@ pub fn createPlugin(
     });
     lib.linkLibrary(uph.artifact);
 
-    // Install uph library
-
-    const install_uph = b.addInstallArtifact(uph.artifact, .{
-        .dest_dir = .{
-            .override = .{ .custom = "bin" },
-        },
-    });
-
-    lib.step.dependOn(&install_uph.step);
-
     return lib;
 }
 
-fn getuphBuilder(b: *std.Build, dep_name: ?[]const u8) *std.Build {
+fn getUphBuilder(b: *std.Build, dep_name: ?[]const u8) *std.Build {
     return if (dep_name) |dep| b.dependency(dep, .{ .skipbuild = true }).builder else b;
+}
+
+fn setupCompileStep(
+    b: *std.Build,
+    name: []const u8,
+    install: *std.Build.Step.InstallArtifact,
+) void {
+    const compile_step = b.step(b.fmt("compile-{s}", .{name}), "Run the application");
+    compile_step.dependOn(&install.step);
 }
 
 pub fn setupRunStep(
     b: *std.Build,
-    testbed: *std.Build.Step.Compile,
+    exe: *std.Build.Step.Compile,
 ) void {
-    const run_cmd = b.addRunArtifact(testbed);
-    run_cmd.step.dependOn(b.getInstallStep());
-    run_cmd.setCwd(b.path("./bin"));
+    const run_cmd = b.addRunArtifact(exe);
+
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
 
     const run_step = b.step("run", "Run the application");
     run_step.dependOn(&run_cmd.step);

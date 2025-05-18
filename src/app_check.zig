@@ -1,7 +1,9 @@
 const std = @import("std");
+const uph = @import("uph");
 
 pub fn doAppCheck(game: type) void {
-    if (!@hasDecl(game, "init") or
+    if (!@hasDecl(game, "config") or
+        !@hasDecl(game, "event") or
         !@hasDecl(game, "event") or
         !@hasDecl(game, "update") or
         !@hasDecl(game, "draw") or
@@ -9,6 +11,7 @@ pub fn doAppCheck(game: type) void {
     {
         @compileError(
             \\You must provide following 5 public api in your game code:
+            \\    pub fn config(ctx: uph.Context.Context) !uph.Config.Config
             \\    pub fn init(ctx: uph.Context.Context) !void
             \\    pub fn event(ctx: uph.Context.Context, e: sdl.Event) !void
             \\    pub fn update(ctx: uph.Context.Context) !void
@@ -16,6 +19,13 @@ pub fn doAppCheck(game: type) void {
             \\    pub fn quit(ctx: uph.Context.Context) void
         );
     }
+    switch (@typeInfo(@typeInfo(@TypeOf(game.config)).@"fn".return_type.?)) {
+        .error_union => |info| if (info.payload != uph.Config.Config) {
+            @compileError("`config` must return !void");
+        },
+        else => @compileError("`config` must return !void"),
+    }
+
     switch (@typeInfo(@typeInfo(@TypeOf(game.init)).@"fn".return_type.?)) {
         .error_union => |info| if (info.payload != void) {
             @compileError("`init` must return !void");

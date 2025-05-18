@@ -8,7 +8,7 @@ const uph = @import("uph.zig");
 const sdl = uph.clib.sdl;
 const c = uph.clib;
 const zgui = uph.zgui;
-const zphysfs = uph.zphysfs;
+
 const plot = zgui.plot;
 const log = std.log.scoped(.uph);
 
@@ -25,7 +25,6 @@ pub const Context = struct {
         window: *const fn (ctx: *anyopaque) *uph.Renderer.Window,
         renderer: *const fn (ctx: *anyopaque) *uph.Renderer.RenderManager,
         kill: *const fn (ctx: *anyopaque, bool) void,
-        displayStats: *const fn (ctx: *anyopaque, opt: DisplayStats) void,
         registerPlugin: *const fn (ctx: *anyopaque, name: []const u8, path: []const u8, hotreload: bool) anyerror!void,
         unregisterPlugin: *const fn (ctx: *anyopaque, name: []const u8) anyerror!void,
         forceReloadPlugin: *const fn (ctx: *anyopaque, name: []const u8) anyerror!void,
@@ -80,12 +79,6 @@ pub const Context = struct {
         return self.vtable.kill(self.ctx, b);
     }
 
-    /// Get size of canvas
-    /// Display statistics
-    pub fn displayStats(self: Context, opt: DisplayStats) void {
-        return self.vtable.displayStats(self.ctx, opt);
-    }
-
     /// Register new plugin
     pub fn registerPlugin(self: Context, name: []const u8, path: []const u8, hotreload: bool) !void {
         try self.vtable.registerPlugin(self.ctx, name, path, hotreload);
@@ -100,18 +93,6 @@ pub const Context = struct {
     pub fn forceReloadPlugin(self: Context, name: []const u8) !void {
         try self.vtable.forceReloadPlugin(self.ctx, name);
     }
-};
-
-pub const DisplayStats = struct {
-    movable: bool = false,
-    collapsible: bool = false,
-    width: f32 = 250,
-    duration: u32 = 15,
-};
-
-pub const DebugPrint = struct {
-    pos: uph.Types.Point = .origin,
-    color: uph.Types.Color = .white,
 };
 
 /// Context generator
@@ -164,12 +145,11 @@ pub fn uphContext(comptime cfg: config.Config) type {
                 debug_allocator.allocator()
             else
                 std.heap.smp_allocator;
+
             var self = try _allocator.create(@This());
             self.* = .{};
             self._allocator = _allocator;
             self._ctx = self.context();
-
-            zphysfs.init(self._allocator);
 
             // Init SDL window and renderer
             self._renderer = @constCast(try uph.Renderer.RenderManager.init(
@@ -192,6 +172,10 @@ pub fn uphContext(comptime cfg: config.Config) type {
             return self;
         }
 
+        pub fn ctx_config(self: *@This(), _cfg: uph.Config.Config) void {
+            self._cfg = _cfg;
+        }
+
         pub fn destroy(self: *@This()) void {
 
             // Destroy plugin system
@@ -201,7 +185,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
             // Destroy window and renderer
             self._renderer.deinit();
-            zphysfs.deinit();
+
             // Destory self
             self._allocator.destroy(self);
 
@@ -374,7 +358,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     .window = window,
                     .renderer = renderer,
                     .kill = kill,
-                    .displayStats = displayStats,
                     .registerPlugin = registerPlugin,
                     .unregisterPlugin = unregisterPlugin,
                     .forceReloadPlugin = forceReloadPlugin,
@@ -437,12 +420,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
         fn kill(ptr: *anyopaque, b: bool) void {
             const self: *@This() = @ptrCast(@alignCast(ptr));
             self._running = !b;
-        }
-
-        /// Display frame statistics
-        fn displayStats(ptr: *anyopaque, opt: DisplayStats) void {
-            _ = ptr; // autofix
-            _ = opt; // autofix
         }
 
         /// Register new plugin
