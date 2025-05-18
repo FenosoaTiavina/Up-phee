@@ -1,5 +1,6 @@
 .zig-cache
 shaders/compiled
 zig-out
+**.so
 imgui.ini
 assets/shaders/compiled
