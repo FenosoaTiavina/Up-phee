@@ -92,7 +92,7 @@ pub fn createApp(
     });
 
     const exe = b.addExecutable(.{
-        .name = app_name,
+        .name = b.fmt("{s}.out", .{app_name}),
         .root_module = root,
     });
 

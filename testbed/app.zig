@@ -78,6 +78,8 @@ pub fn config(ctx: uph.Context.Context) !uph.Config.Config {
 }
 
 pub fn init(ctx: uph.Context.Context) !void {
+    try ctx.registerPlugin("test_hotreload", "./libtest_hotreload.so", true);
+
     std.log.debug("Hello from entry point", .{}); // Fixed typo
 
     registry = ecs.Registry.init(ctx.allocator());
