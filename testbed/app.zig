@@ -67,9 +67,18 @@ pub fn cam_rotate(cam: *uph.uph3d.Camera.Camera, e: uph.Input.Event, delta_time:
 }
 
 pub fn init(ctx: uph.Context.Context) !void {
+    const exe_path = try std.fs.selfExePathAlloc(ctx.allocator());
+    defer ctx.allocator().free(exe_path);
+    const opt_exe_dir: String = std.fs.path.dirname(exe_path) orelse {
+        return error.ExeDirFail;
+    };
+
+    // try std.posix.chdir(opt_exe_dir);
+
+    std.log.debug("exe: {s} \n", .{opt_exe_dir});
 
     // try ctx.registerPlugin("test_hotreload", try std.fmt.allocPrint(ctx.allocator(), "{s}/{s}", .{ opt_exe_dir, "libtest_hotreload.so" }), true);
-    try ctx.registerPlugin("test_hotreload", "libtest_hotreload.so", true);
+    // try ctx.registerPlugin("test_hotreload", "libtest_hotreload.so", true);
 
     std.log.debug("Hello from entry point", .{}); // Fixed typo
 

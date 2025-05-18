@@ -8,7 +8,6 @@ const uph = @import("uph.zig");
 const sdl = uph.clib.sdl;
 const c = uph.clib;
 const zgui = uph.zgui;
-const zphysfs = uph.zphysfs;
 const plot = zgui.plot;
 const log = std.log.scoped(.uph);
 
@@ -169,8 +168,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
             self._allocator = _allocator;
             self._ctx = self.context();
 
-            zphysfs.init(self._allocator);
-
             // Init SDL window and renderer
             self._renderer = @constCast(try uph.Renderer.RenderManager.init(
                 self.context().allocator(),
@@ -201,7 +198,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
             // Destroy window and renderer
             self._renderer.deinit();
-            zphysfs.deinit();
             // Destory self
             self._allocator.destroy(self);
 

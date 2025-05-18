@@ -1,6 +1,6 @@
 #!/bin/sh
-source_directory="assets/shaders/source"
-compiled_directory="assets/shaders/compiled"
+source_directory="./assets/shaders/source"
+compiled_directory="./assets/shaders/compiled"
 vulkan_version="1.0"
 mkdir -p $compiled_directory
 rm -f $compiled_directory/*
