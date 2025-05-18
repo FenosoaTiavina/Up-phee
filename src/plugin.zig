@@ -20,11 +20,11 @@ const Error = error{
 /// draw: Draw the plugin
 /// get_memory: Get the memory of the plugin
 /// reload_memory: Reload the memory of the plugin
-const InitFn = *const fn (ctx: *const uph.Context, name: [*:0]const u8) callconv(.C) bool;
-const DeinitFn = *const fn (ctx: *const uph.Context, name: [*:0]const u8) callconv(.C) void;
-const EventFn = *const fn (ctx: *const uph.Context, e: *const uph.Events.Event, name: [*:0]const u8) callconv(.C) void;
-const UpdateFn = *const fn (ctx: *const uph.Context, name: [*:0]const u8) callconv(.C) void;
-const DrawFn = *const fn (ctx: *const uph.Context, name: [*:0]const u8) callconv(.C) void;
+const InitFn = *const fn (ctx: *const uph.Context.Context, name: [*:0]const u8) callconv(.C) bool;
+const DeinitFn = *const fn (ctx: *const uph.Context.Context, name: [*:0]const u8) callconv(.C) void;
+const EventFn = *const fn (ctx: *const uph.Context.Context, e: *const uph.Input.Event, name: [*:0]const u8) callconv(.C) void;
+const UpdateFn = *const fn (ctx: *const uph.Context.Context, name: [*:0]const u8) callconv(.C) void;
+const DrawFn = *const fn (ctx: *const uph.Context.Context, name: [*:0]const u8) callconv(.C) void;
 const GetMemoryFn = *const fn () callconv(.C) ?*const anyopaque;
 const ReloadMemoryFn = *const fn (mem: ?*const anyopaque, name: [*:0]const u8) callconv(.C) void;
 
@@ -60,7 +60,7 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
     return ps;
 }
 
-pub fn destroy(self: *Self, ctx: uph.Context) void {
+pub fn destroy(self: *Self, ctx: uph.Context.Context) void {
     var it = self.plugins.iterator();
     while (it.next()) |kv| {
         kv.value_ptr.deinit_fn(&ctx, kv.value_ptr.name);
@@ -73,7 +73,7 @@ pub fn destroy(self: *Self, ctx: uph.Context) void {
     self.allocator.destroy(self);
 }
 
-pub fn register(self: *Self, ctx: uph.Context, name: []const u8, path: []const u8, hot_reload: bool) !void {
+pub fn register(self: *Self, ctx: uph.Context.Context, name: []const u8, path: []const u8, hot_reload: bool) !void {
     if (self.plugins.contains(name)) return error.NameCollision;
 
     var loaded = try self.loadLibrary(path, 1);
@@ -107,7 +107,7 @@ pub fn register(self: *Self, ctx: uph.Context, name: []const u8, path: []const u
     );
 }
 
-pub fn unregister(self: *Self, ctx: uph.Context, name: []const u8) !void {
+pub fn unregister(self: *Self, ctx: uph.Context.Context, name: []const u8) !void {
     if (self.plugins.contains(name)) return error.NameNotExist;
     var kv = self.plugins.fetchSwapRemove(name).?;
     kv.value.deinit_fn(&ctx, kv.value.name);
@@ -117,14 +117,14 @@ pub fn unregister(self: *Self, ctx: uph.Context, name: []const u8) !void {
     self.allocator.free(kv.value.origin_path);
 }
 
-pub fn event(self: Self, ctx: uph.Context, e: uph.Event) void {
+pub fn event(self: Self, ctx: uph.Context.Context, e: uph.Input.Event) void {
     var it = self.plugins.iterator();
     while (it.next()) |kv| {
         kv.value_ptr.event_fn(&ctx, &e, kv.value_ptr.name);
     }
 }
 
-pub fn update(self: *Self, ctx: uph.Context) void {
+pub fn update(self: *Self, ctx: uph.Context.Context) void {
     var it = self.plugins.iterator();
     while (it.next()) |kv| {
         kv.value_ptr.update_fn(&ctx, kv.value_ptr.name);
@@ -139,7 +139,7 @@ pub fn update(self: *Self, ctx: uph.Context) void {
     }
 }
 
-pub fn draw(self: *Self, ctx: uph.Context) void {
+pub fn draw(self: *Self, ctx: uph.Context.Context) void {
     var it = self.plugins.iterator();
     while (it.next()) |kv| {
         kv.value_ptr.draw_fn(&ctx, kv.value_ptr.name);
@@ -187,6 +187,7 @@ fn loadLibrary(self: *Self, path: []const u8, version: u32) !struct {
     reload_memory_fn: ReloadMemoryFn,
 } {
     const stat = try std.fs.cwd().statFile(path);
+
     const load_path = try std.fmt.allocPrint(
         self.allocator,
         "{s}/{s}.{d}",

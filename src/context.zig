@@ -3,11 +3,12 @@ const assert = std.debug.assert;
 const builtin = @import("builtin");
 const bos = @import("build_options");
 const config = @import("config.zig");
-// const PluginSystem = @import("PluginSystem.zig");
+const PluginSystem = @import("plugin.zig");
 const uph = @import("uph.zig");
 const sdl = uph.clib.sdl;
 const c = uph.clib;
 const zgui = uph.zgui;
+const zphysfs = uph.zphysfs;
 const plot = zgui.plot;
 const log = std.log.scoped(.uph);
 
@@ -140,6 +141,8 @@ pub fn uphContext(comptime cfg: config.Config) type {
         // RenderManager instance
         _renderer: *uph.Renderer.RenderManager = undefined,
 
+        _plugin_system: *PluginSystem = undefined,
+
         _aspect_ratio: f32 = undefined,
 
         // High DPI stuff
@@ -166,6 +169,8 @@ pub fn uphContext(comptime cfg: config.Config) type {
             self._allocator = _allocator;
             self._ctx = self.context();
 
+            zphysfs.init(self._allocator);
+
             // Init SDL window and renderer
             self._renderer = @constCast(try uph.Renderer.RenderManager.init(
                 self.context().allocator(),
@@ -179,9 +184,9 @@ pub fn uphContext(comptime cfg: config.Config) type {
             uph.Input.init(self._ctx);
 
             // Init plugin system
-            // if (bos.link_dynamic) {
-            //     self._plugin_system = try PluginSystem.create(self._allocator);
-            // }
+            if (bos.link_dynamic) {
+                self._plugin_system = try PluginSystem.create(self._allocator);
+            }
 
             // Misc.
             return self;
@@ -190,13 +195,13 @@ pub fn uphContext(comptime cfg: config.Config) type {
         pub fn destroy(self: *@This()) void {
 
             // Destroy plugin system
-            // if (bos.link_dynamic) {
-            //     self._plugin_system.destroy(self._ctx);
-            // }
+            if (bos.link_dynamic) {
+                self._plugin_system.destroy(self._ctx);
+            }
 
             // Destroy window and renderer
             self._renderer.deinit();
-
+            zphysfs.deinit();
             // Destory self
             self._allocator.destroy(self);
 
@@ -214,11 +219,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
             comptime updateFn: *const fn (Context) anyerror!void,
             comptime drawFn: *const fn (Context) anyerror!void,
         ) void {
-            // const pc_threshold: u64 = switch (cfg.uph_fps_limit) {
-            //     .none => 0,
-            //     .auto => 0,
-            //     .manual => |_fps| self._pc_freq / @as(u64, _fps),
-            // };
 
             // Update game
             self._update(eventFn, updateFn);
@@ -229,16 +229,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
             // Do rendering
             if (self._renderer.pipelines.count() > 0) {
-
-                // const fb_scale = c.sdl.SDL_GetWindowDisplayScale(self.context().window().sdl_window);
-
-                // zgui.backend.newFrame(
-                //     @intCast(self.context().cfg().uph_window_size.custom.width),
-                //     @intCast(self.context().cfg().uph_window_size.custom.height),
-                //     fb_scale,
-                // );
-                // zgui.newFrame();
-
                 self.context().renderer().beginFrame() catch |err| {
                     log.err("Got error in `beginFrame`: {s}", .{@errorName(err)});
                     if (@errorReturnTrace()) |trace| {
@@ -257,10 +247,9 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     }
                 };
 
-                // zgui.backend.render();
-                // if (bos.link_dynamic) {
-                //     self._plugin_system.draw(self._ctx);
-                // }
+                if (bos.link_dynamic) {
+                    self._plugin_system.draw(self._ctx);
+                }
 
                 self._renderer.submitFrame() catch |err| {
                     log.err("Got error in `submitFrame`: {s}", .{@errorName(err)});
@@ -295,9 +284,9 @@ pub fn uphContext(comptime cfg: config.Config) type {
                         return;
                     }
                 };
-                // if (bos.link_dynamic) {
-                //     self._plugin_system.event(self._ctx, we);
-                // }
+                if (bos.link_dynamic) {
+                    self._plugin_system.event(self._ctx, we);
+                }
             }
 
             updateFn(self._ctx) catch |err| {
@@ -308,9 +297,9 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     return;
                 }
             };
-            // if (bos.link_dynamic) {
-            //     self._plugin_system.update(self._ctx);
-            // }
+            if (bos.link_dynamic) {
+                self._plugin_system.update(self._ctx);
+            }
         }
 
         /// Update frame stats once per second
@@ -458,42 +447,34 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
         /// Register new plugin
         pub fn registerPlugin(ptr: *anyopaque, name: []const u8, path: []const u8, hotreload: bool) !void {
-            _ = ptr; // autofix
-            _ = name; // autofix
-            _ = path; // autofix
-            _ = hotreload; // autofix
-            // if (!bos.link_dynamic) {
-            //     @panic("plugin system isn't enabled!");
-            // }
-            // const self: *@This() = @ptrCast(@alignCast(ptr));
-            // try self._plugin_system.register(
-            //     self.context(),
-            //     name,
-            //     path,
-            //     hotreload,
-            // );
+            if (!bos.link_dynamic) {
+                @panic("plugin system isn't enabled!");
+            }
+            const self: *@This() = @ptrCast(@alignCast(ptr));
+            try self._plugin_system.register(
+                self.context(),
+                name,
+                path,
+                hotreload,
+            );
         }
 
         /// Unregister plugin
         pub fn unregisterPlugin(ptr: *anyopaque, name: []const u8) !void {
-            _ = ptr; // autofix
-            _ = name; // autofix
-            // if (!bos.link_dynamic) {
-            //     @panic("plugin system isn't enabled!");
-            // }
-            // const self: *@This() = @ptrCast(@alignCast(ptr));
-            // try self._plugin_system.unregister(self.context(), name);
+            if (!bos.link_dynamic) {
+                @panic("plugin system isn't enabled!");
+            }
+            const self: *@This() = @ptrCast(@alignCast(ptr));
+            try self._plugin_system.unregister(self.context(), name);
         }
 
         ///  Force reload plugin
         pub fn forceReloadPlugin(ptr: *anyopaque, name: []const u8) !void {
-            _ = ptr; // autofix
-            _ = name; // autofix
-            // if (!bos.link_dynamic) {
-            //     @panic("plugin system isn't enabled!");
-            // }
-            // const self: *@This() = @ptrCast(@alignCast(ptr));
-            // try self._plugin_system.forceReload(name);
+            if (!bos.link_dynamic) {
+                @panic("plugin system isn't enabled!");
+            }
+            const self: *@This() = @ptrCast(@alignCast(ptr));
+            try self._plugin_system.forceReload(name);
         }
     };
 }

@@ -65,6 +65,7 @@ pub const RenderManager = struct {
     default_sampler: *c.sdl.SDL_GPUSampler,
     command_buffers: std.AutoHashMap(u32, *Cmd),
     pipelines: std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline),
+
     clear_color: Types.Vec4_f32,
     target_info: c.sdl.SDL_GPUColorTargetInfo = undefined,
 
@@ -274,6 +275,9 @@ const GraphicsPipelineDesc = struct {
     vertex_shader: Shader,
     fragment_shader: Shader,
     vertex_input_state: c.sdl.SDL_GPUVertexInputState,
+    cull_mode: c.sdl.SDL_GPUCullMode,
+    front_face: c.sdl.SDL_GPUFrontFace,
+    primitive_type: c.sdl.SDL_GPUPrimitiveType,
     wireframe: bool,
 };
 
@@ -291,10 +295,10 @@ pub fn createGraphicsPipeline(renderer: *RenderManager, desc: GraphicsPipelineDe
                 .format = c.sdl.SDL_GetGPUSwapchainTextureFormat(renderer.device, renderer.window.sdl_window),
             },
         },
-        .primitive_type = c.sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .primitive_type = desc.primitive_type,
         .rasterizer_state = .{
-            .cull_mode = c.sdl.SDL_GPU_CULLMODE_NONE,
-            .front_face = c.sdl.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
+            .cull_mode = desc.cull_mode,
+            .front_face = desc.front_face,
             .fill_mode = if (desc.wireframe) c.sdl.SDL_GPU_FILLMODE_LINE else c.sdl.SDL_GPU_FILLMODE_FILL,
         },
     };

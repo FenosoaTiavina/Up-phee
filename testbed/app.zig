@@ -14,11 +14,9 @@ var camera_entity: ecs.Entity = undefined;
 
 var cam_data: *uph.uph3d.Camera.Camera = undefined;
 
-var batch: *uph.uph3d.Batch.Batch = undefined;
-
-var c1: uph.uph3d.Cube = undefined;
-
 const log = std.log.scoped(.GAME);
+
+const String = []const u8;
 
 pub fn cam_move(cam: *uph.uph3d.Camera.Camera, e: uph.Input.Event, delta_time: f32) void {
     _ = e; // autofix
@@ -69,6 +67,10 @@ pub fn cam_rotate(cam: *uph.uph3d.Camera.Camera, e: uph.Input.Event, delta_time:
 }
 
 pub fn init(ctx: uph.Context.Context) !void {
+
+    // try ctx.registerPlugin("test_hotreload", try std.fmt.allocPrint(ctx.allocator(), "{s}/{s}", .{ opt_exe_dir, "libtest_hotreload.so" }), true);
+    try ctx.registerPlugin("test_hotreload", "libtest_hotreload.so", true);
+
     std.log.debug("Hello from entry point", .{}); // Fixed typo
 
     registry = ecs.Registry.init(ctx.allocator());
@@ -111,11 +113,12 @@ pub fn init(ctx: uph.Context.Context) !void {
             },
             .num_vertex_attributes = 1,
         },
-        .wireframe = true,
+        .cull_mode = uph.clib.sdl.SDL_GPU_CULLMODE_BACK,
+        .front_face = uph.clib.sdl.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
+        .primitive_type = uph.clib.sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .wireframe = false,
     });
     _ = &g_id1; // autofix
-
-    batch = try uph.uph3d.Batch.Batch.init(ctx, g_id1, cam_data);
 
     ctx.renderer().clear(uph.Types.Vec4_f32{
         0.28,
@@ -123,10 +126,6 @@ pub fn init(ctx: uph.Context.Context) !void {
         0.28,
         1.00,
     });
-
-    c1 = uph.uph3d.Cube.cube();
-
-    try c1.addToBatch(batch);
 }
 
 pub fn event(ctx: uph.Context.Context, e: uph.Input.Event) !void {
@@ -163,12 +162,10 @@ pub fn update(ctx: uph.Context.Context) !void {
 pub fn draw(ctx: uph.Context.Context) !void {
     _ = &ctx; // autofix
     // Debug: Print batch content information before drawing
-    try batch.draw(ctx.deltaTime() * 0.9);
 }
 
 pub fn quit(ctx: uph.Context.Context) void {
     // your deinit code
     _ = ctx;
     registry.deinit();
-    batch.deinit();
 }
