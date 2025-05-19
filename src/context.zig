@@ -2,6 +2,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 const builtin = @import("builtin");
 const bos = @import("build_options");
+
 const config = @import("config.zig");
 const PluginSystem = @import("plugin.zig");
 const uph = @import("uph.zig");
@@ -9,6 +10,7 @@ const sdl = uph.clib.sdl;
 const c = uph.clib;
 const zgui = uph.zgui;
 const plot = zgui.plot;
+
 const log = std.log.scoped(.uph);
 
 /// Application context
@@ -24,7 +26,6 @@ pub const Context = struct {
         window: *const fn (ctx: *anyopaque) *uph.Renderer.Window,
         renderer: *const fn (ctx: *anyopaque) *uph.Renderer.RenderManager,
         kill: *const fn (ctx: *anyopaque, bool) void,
-        displayStats: *const fn (ctx: *anyopaque, opt: DisplayStats) void,
         registerPlugin: *const fn (ctx: *anyopaque, name: []const u8, path: []const u8, hotreload: bool) anyerror!void,
         unregisterPlugin: *const fn (ctx: *anyopaque, name: []const u8) anyerror!void,
         forceReloadPlugin: *const fn (ctx: *anyopaque, name: []const u8) anyerror!void,
@@ -79,12 +80,6 @@ pub const Context = struct {
         return self.vtable.kill(self.ctx, b);
     }
 
-    /// Get size of canvas
-    /// Display statistics
-    pub fn displayStats(self: Context, opt: DisplayStats) void {
-        return self.vtable.displayStats(self.ctx, opt);
-    }
-
     /// Register new plugin
     pub fn registerPlugin(self: Context, name: []const u8, path: []const u8, hotreload: bool) !void {
         try self.vtable.registerPlugin(self.ctx, name, path, hotreload);
@@ -99,18 +94,6 @@ pub const Context = struct {
     pub fn forceReloadPlugin(self: Context, name: []const u8) !void {
         try self.vtable.forceReloadPlugin(self.ctx, name);
     }
-};
-
-pub const DisplayStats = struct {
-    movable: bool = false,
-    collapsible: bool = false,
-    width: f32 = 250,
-    duration: u32 = 15,
-};
-
-pub const DebugPrint = struct {
-    pos: uph.Types.Point = .origin,
-    color: uph.Types.Color = .white,
 };
 
 /// Context generator
@@ -163,6 +146,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
                 debug_allocator.allocator()
             else
                 std.heap.smp_allocator;
+
             var self = try _allocator.create(@This());
             self.* = .{};
             self._allocator = _allocator;
@@ -189,6 +173,10 @@ pub fn uphContext(comptime cfg: config.Config) type {
             return self;
         }
 
+        pub fn ctx_config(self: *@This(), _cfg: uph.Config.Config) void {
+            self._cfg = _cfg;
+        }
+
         pub fn destroy(self: *@This()) void {
 
             // Destroy plugin system
@@ -198,6 +186,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
             // Destroy window and renderer
             self._renderer.deinit();
+
             // Destory self
             self._allocator.destroy(self);
 
@@ -255,6 +244,8 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     }
                 };
             }
+
+            self._updateFrameStats();
         }
 
         /// Update game state
@@ -296,6 +287,64 @@ pub fn uphContext(comptime cfg: config.Config) type {
             }
         }
 
+        /// Update frame stats once per second
+        inline fn _updateFrameStats(self: *@This()) void {
+            _ = self; // autofix
+        }
+
+        /// Check system information
+        fn checkSys(self: *@This()) !void {
+            const target = builtin.target;
+            var sdl_version: sdl.SDL_version = undefined;
+            sdl.SDL_GetVersion(&sdl_version);
+            const ram_size = sdl.SDL_GetSystemRAM();
+            const info = try self._renderer.getInfo();
+
+            // Print system info
+            try std.fmt.format(
+                std.io.getStdErr().writer(),
+                \\System info:
+                \\    Build Mode  : {s}
+                \\    Log Level   : {s}
+                \\    Zig Version : {}
+                \\    CPU         : {s}
+                \\    ABI         : {s}
+                \\    SDL         : {}.{}.{}
+                \\    Platform    : {s}
+                \\    Memory      : {d}MB
+                \\    App Dir     : {s} 
+                \\    
+                \\RenderManager info:
+                \\    Driver           : {s}
+                \\    Vertical Sync    : {}
+                \\    Max Texture Size : {d}*{d}
+                \\
+                \\
+            ,
+                .{
+                    @tagName(builtin.mode),
+                    @tagName(cfg.uph_log_level),
+                    builtin.zig_version,
+                    @tagName(target.cpu.arch),
+                    @tagName(target.abi),
+                    sdl_version.major,
+                    sdl_version.minor,
+                    sdl_version.patch,
+                    @tagName(target.os.tag),
+                    ram_size,
+                    info.name,
+                    info.flags & sdl.SDL_RENDERER_PRESENTVSYNC != 0,
+                    info.max_texture_width,
+                    info.max_texture_height,
+                },
+            );
+
+            if (sdl_version.major < 2 or (sdl_version.minor == 0 and sdl_version.patch < 18)) {
+                log.err("SDL version too low, need at least 2.0.18", .{});
+                return sdl.Error.SdlError;
+            }
+        }
+
         /// Get type-erased context for application
         pub fn context(self: *@This()) Context {
             return .{
@@ -310,7 +359,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     .window = window,
                     .renderer = renderer,
                     .kill = kill,
-                    .displayStats = displayStats,
                     .registerPlugin = registerPlugin,
                     .unregisterPlugin = unregisterPlugin,
                     .forceReloadPlugin = forceReloadPlugin,
@@ -373,12 +421,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
         fn kill(ptr: *anyopaque, b: bool) void {
             const self: *@This() = @ptrCast(@alignCast(ptr));
             self._running = !b;
-        }
-
-        /// Display frame statistics
-        fn displayStats(ptr: *anyopaque, opt: DisplayStats) void {
-            _ = ptr; // autofix
-            _ = opt; // autofix
         }
 
         /// Register new plugin

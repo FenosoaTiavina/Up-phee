@@ -5,8 +5,6 @@ const uph = @import("uph");
 const zgui = uph.zgui;
 const ecs = uph.ecs;
 
-pub const uph_window_always_on_top = true;
-
 // Initialize the ECS registry
 var registry: ecs.Registry = undefined;
 
@@ -66,19 +64,21 @@ pub fn cam_rotate(cam: *uph.uph3d.Camera.Camera, e: uph.Input.Event, delta_time:
     }
 }
 
-pub fn init(ctx: uph.Context.Context) !void {
+pub fn config(ctx: uph.Context.Context) !uph.Config.Config {
     const exe_path = try std.fs.selfExePathAlloc(ctx.allocator());
     defer ctx.allocator().free(exe_path);
     const opt_exe_dir: String = std.fs.path.dirname(exe_path) orelse {
         return error.ExeDirFail;
     };
+    var new_config = ctx.cfg();
 
-    // try std.posix.chdir(opt_exe_dir);
+    new_config.uph_exe_dir = try ctx.allocator().dupe(u8, opt_exe_dir);
 
-    std.log.debug("exe: {s} \n", .{opt_exe_dir});
+    return new_config;
+}
 
-    // try ctx.registerPlugin("test_hotreload", try std.fmt.allocPrint(ctx.allocator(), "{s}/{s}", .{ opt_exe_dir, "libtest_hotreload.so" }), true);
-    // try ctx.registerPlugin("test_hotreload", "libtest_hotreload.so", true);
+pub fn init(ctx: uph.Context.Context) !void {
+    try ctx.registerPlugin("test_hotreload", "./libtest_hotreload.so", true);
 
     std.log.debug("Hello from entry point", .{}); // Fixed typo
 
@@ -175,6 +175,6 @@ pub fn draw(ctx: uph.Context.Context) !void {
 
 pub fn quit(ctx: uph.Context.Context) void {
     // your deinit code
-    ctx.allocator().free(ctx.cfg().uph_exe_dir);
+    _ = ctx;
     registry.deinit();
 }
