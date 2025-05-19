@@ -255,8 +255,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     }
                 };
             }
-
-            self._updateFrameStats();
         }
 
         /// Update game state
@@ -295,64 +293,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
             };
             if (bos.link_dynamic) {
                 self._plugin_system.update(self._ctx);
-            }
-        }
-
-        /// Update frame stats once per second
-        inline fn _updateFrameStats(self: *@This()) void {
-            _ = self; // autofix
-        }
-
-        /// Check system information
-        fn checkSys(self: *@This()) !void {
-            const target = builtin.target;
-            var sdl_version: sdl.SDL_version = undefined;
-            sdl.SDL_GetVersion(&sdl_version);
-            const ram_size = sdl.SDL_GetSystemRAM();
-            const info = try self._renderer.getInfo();
-
-            // Print system info
-            try std.fmt.format(
-                std.io.getStdErr().writer(),
-                \\System info:
-                \\    Build Mode  : {s}
-                \\    Log Level   : {s}
-                \\    Zig Version : {}
-                \\    CPU         : {s}
-                \\    ABI         : {s}
-                \\    SDL         : {}.{}.{}
-                \\    Platform    : {s}
-                \\    Memory      : {d}MB
-                \\    App Dir     : {s} 
-                \\    
-                \\RenderManager info:
-                \\    Driver           : {s}
-                \\    Vertical Sync    : {}
-                \\    Max Texture Size : {d}*{d}
-                \\
-                \\
-            ,
-                .{
-                    @tagName(builtin.mode),
-                    @tagName(cfg.uph_log_level),
-                    builtin.zig_version,
-                    @tagName(target.cpu.arch),
-                    @tagName(target.abi),
-                    sdl_version.major,
-                    sdl_version.minor,
-                    sdl_version.patch,
-                    @tagName(target.os.tag),
-                    ram_size,
-                    info.name,
-                    info.flags & sdl.SDL_RENDERER_PRESENTVSYNC != 0,
-                    info.max_texture_width,
-                    info.max_texture_height,
-                },
-            );
-
-            if (sdl_version.major < 2 or (sdl_version.minor == 0 and sdl_version.patch < 18)) {
-                log.err("SDL version too low, need at least 2.0.18", .{});
-                return sdl.Error.SdlError;
             }
         }
 

@@ -175,6 +175,6 @@ pub fn draw(ctx: uph.Context.Context) !void {
 
 pub fn quit(ctx: uph.Context.Context) void {
     // your deinit code
-    _ = ctx;
+    ctx.allocator().free(ctx.cfg().uph_exe_dir);
     registry.deinit();
 }
