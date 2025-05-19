@@ -2,14 +2,15 @@ const std = @import("std");
 const assert = std.debug.assert;
 const builtin = @import("builtin");
 const bos = @import("build_options");
+
 const config = @import("config.zig");
 const PluginSystem = @import("plugin.zig");
 const uph = @import("uph.zig");
 const sdl = uph.clib.sdl;
 const c = uph.clib;
 const zgui = uph.zgui;
-
 const plot = zgui.plot;
+
 const log = std.log.scoped(.uph);
 
 /// Application context
