@@ -48,7 +48,8 @@ pub fn createGPUObject(
 
     return gpu_buf;
 }
-pub fn destroy(
+
+pub fn destroyGPUObject(
     self: *GPUObjet,
     renderer: *uph.Renderer.RenderManager,
 ) void {

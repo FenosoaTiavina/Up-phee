@@ -52,10 +52,6 @@ pub const Cmd = struct {
         return cmd;
     }
 
-    pub fn deinit(self: *Cmd, allocator: std.mem.Allocator) void {
-        allocator.free(self);
-    }
-
     pub fn sumbit(self: *Cmd) bool {
         if (!c.sdl.SDL_SubmitGPUCommandBuffer(self.command_buffer)) {
             std.log.err("Failed cmd_buf.Submit {s} ", .{c.sdl.SDL_GetError()});
@@ -178,7 +174,7 @@ pub const RenderManager = struct {
         const old = self.command_buffers.fetchRemove(id) orelse {
             return error.CmdNotFound;
         };
-        old.value.deinit(self.allocator);
+        self.allocator.destroy(old.value);
 
         try self.command_buffers.put(id, try Cmd.init(self.allocator, command_buffer));
     }
@@ -194,12 +190,14 @@ pub const RenderManager = struct {
         return id;
     }
 
-    pub fn submitRogueCommand(self: *RenderManager, cmd: *u32) !void {
+    pub fn submitRogueCommand(self: *RenderManager, cmd: *Cmd) !void {
         if (!cmd.sumbit()) {
             std.log.err("Failed cmd_buf.Submit {s} ", .{c.sdl.SDL_GetError()});
-            cmd.deinit(self.allocator);
+            self.allocator.destroy(cmd);
             return error.CommandBufferSubmit;
         }
+
+        self.allocator.destroy(cmd);
     }
 
     pub fn createRogueCommand(self: *RenderManager) !*Cmd {
@@ -208,21 +206,6 @@ pub const RenderManager = struct {
         };
 
         return try Cmd.init(self.allocator, command_buffer);
-    }
-
-    pub fn submitCommand(self: *RenderManager, id: u32) !void {
-        var cmd = self.command_buffers.get(id) orelse {
-            return error.CmdNotFound;
-        };
-
-        if (cmd.submition) {
-            return error.CmdAlreadySubmitted;
-        }
-
-        if (!cmd.sumbit()) {
-            std.log.err("Failed cmd_buf.Submit {s} ", .{c.sdl.SDL_GetError()});
-            return error.CommandBufferSubmit;
-        }
     }
 
     pub fn getCommandBuffer(self: *RenderManager, command_buffer_id: u32) !*Cmd {
