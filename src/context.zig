@@ -22,7 +22,6 @@ pub const Context = struct {
         seconds: *const fn (ctx: *anyopaque) f32,
         realSeconds: *const fn (ctx: *anyopaque) f64,
         deltaTime: *const fn (ctx: *anyopaque) f32,
-        fps: *const fn (ctx: *anyopaque) f32,
         window: *const fn (ctx: *anyopaque) *uph.Renderer.Window,
         renderer: *const fn (ctx: *anyopaque) *uph.Renderer.RenderManager,
         kill: *const fn (ctx: *anyopaque, bool) void,
@@ -54,11 +53,6 @@ pub const Context = struct {
     /// Get delta time between frames
     pub fn deltaTime(self: Context) f32 {
         return self.vtable.deltaTime(self.ctx);
-    }
-
-    /// Get FPS of application
-    pub fn fps(self: Context) f32 {
-        return self.vtable.fps(self.ctx);
     }
 
     /// Get SDL window
@@ -105,6 +99,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
     return struct {
         var debug_allocator: DebugAllocatorType = .init;
+
         const max_costs_num = 300;
         /// Setup configuration
         _cfg: config.Config = cfg,
@@ -127,10 +122,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
         _aspect_ratio: f32 = undefined,
 
-        // High DPI stuff
-        _default_dpi: f32 = undefined,
-        _display_dpi: f32 = undefined,
-
         // Elapsed time of game
         _seconds: f32 = 0,
         _seconds_real: f64 = 0,
@@ -148,9 +139,10 @@ pub fn uphContext(comptime cfg: config.Config) type {
                 std.heap.smp_allocator;
 
             var self = try _allocator.create(@This());
-            self.* = .{};
-            self._allocator = _allocator;
-            self._ctx = self.context();
+            self.* = .{
+                ._allocator = _allocator,
+                ._ctx = self.context(),
+            };
 
             // Init SDL window and renderer
             self._renderer = @constCast(try uph.Renderer.RenderManager.init(
@@ -181,7 +173,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
             // Destroy plugin system
             if (bos.link_dynamic) {
-                self._plugin_system.destroy(self._ctx);
+                self._plugin_system.destroy(self.context());
             }
 
             // Destroy window and renderer
@@ -235,7 +227,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
                 if (bos.link_dynamic) {
                     self._plugin_system.draw(self._ctx);
                 }
-
                 self._renderer.submitFrame() catch |err| {
                     log.err("Got error in `submitFrame`: {s}", .{@errorName(err)});
                     if (@errorReturnTrace()) |trace| {
@@ -244,8 +235,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     }
                 };
             }
-
-            self._updateFrameStats();
         }
 
         /// Update game state
@@ -269,6 +258,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
                         return;
                     }
                 };
+
                 if (bos.link_dynamic) {
                     self._plugin_system.event(self._ctx, we);
                 }
@@ -287,64 +277,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
             }
         }
 
-        /// Update frame stats once per second
-        inline fn _updateFrameStats(self: *@This()) void {
-            _ = self; // autofix
-        }
-
-        /// Check system information
-        fn checkSys(self: *@This()) !void {
-            const target = builtin.target;
-            var sdl_version: sdl.SDL_version = undefined;
-            sdl.SDL_GetVersion(&sdl_version);
-            const ram_size = sdl.SDL_GetSystemRAM();
-            const info = try self._renderer.getInfo();
-
-            // Print system info
-            try std.fmt.format(
-                std.io.getStdErr().writer(),
-                \\System info:
-                \\    Build Mode  : {s}
-                \\    Log Level   : {s}
-                \\    Zig Version : {}
-                \\    CPU         : {s}
-                \\    ABI         : {s}
-                \\    SDL         : {}.{}.{}
-                \\    Platform    : {s}
-                \\    Memory      : {d}MB
-                \\    App Dir     : {s} 
-                \\    
-                \\RenderManager info:
-                \\    Driver           : {s}
-                \\    Vertical Sync    : {}
-                \\    Max Texture Size : {d}*{d}
-                \\
-                \\
-            ,
-                .{
-                    @tagName(builtin.mode),
-                    @tagName(cfg.uph_log_level),
-                    builtin.zig_version,
-                    @tagName(target.cpu.arch),
-                    @tagName(target.abi),
-                    sdl_version.major,
-                    sdl_version.minor,
-                    sdl_version.patch,
-                    @tagName(target.os.tag),
-                    ram_size,
-                    info.name,
-                    info.flags & sdl.SDL_RENDERER_PRESENTVSYNC != 0,
-                    info.max_texture_width,
-                    info.max_texture_height,
-                },
-            );
-
-            if (sdl_version.major < 2 or (sdl_version.minor == 0 and sdl_version.patch < 18)) {
-                log.err("SDL version too low, need at least 2.0.18", .{});
-                return sdl.Error.SdlError;
-            }
-        }
-
         /// Get type-erased context for application
         pub fn context(self: *@This()) Context {
             return .{
@@ -355,7 +287,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
                     .seconds = seconds,
                     .realSeconds = realSeconds,
                     .deltaTime = deltaTime,
-                    .fps = fps,
                     .window = window,
                     .renderer = renderer,
                     .kill = kill,
@@ -396,13 +327,6 @@ pub fn uphContext(comptime cfg: config.Config) type {
         fn deltaTime(ptr: *anyopaque) f32 {
             const self: *@This() = @ptrCast(@alignCast(ptr));
             return self._delta_time;
-        }
-
-        /// Get FPS of application
-        fn fps(ptr: *anyopaque) f32 {
-            const self: *@This() = @ptrCast(@alignCast(ptr));
-            _ = self; // autofix
-            return 0;
         }
 
         /// Get window

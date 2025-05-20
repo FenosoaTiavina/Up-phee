@@ -10,7 +10,7 @@ pub const Config = struct {
     uph_headless: bool = false,
 
     /// Window attributes
-    uph_window_title: [:0]const u8 = "mygame",
+    uph_window_title: [:0]const u8 = "UPH-Game",
     uph_window_size: WindowSize = .{ .custom = .{ .width = 800, .height = 600 } },
     uph_window_min_size: ?uph.Types.Size = null,
     uph_window_max_size: ?uph.Types.Size = null,

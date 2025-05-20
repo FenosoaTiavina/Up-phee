@@ -57,11 +57,13 @@ pub fn create(allocator: std.mem.Allocator) !*Self {
         .allocator = allocator,
         .plugins = std.StringArrayHashMap(Plugin).init(allocator),
     };
+
     return ps;
 }
 
 pub fn destroy(self: *Self, ctx: uph.Context.Context) void {
     var it = self.plugins.iterator();
+
     while (it.next()) |kv| {
         kv.value_ptr.deinit_fn(&ctx, kv.value_ptr.name);
         kv.value_ptr.lib.close();
@@ -69,6 +71,7 @@ pub fn destroy(self: *Self, ctx: uph.Context.Context) void {
         self.allocator.free(kv.value_ptr.name);
         self.allocator.free(kv.value_ptr.origin_path);
     }
+
     self.plugins.deinit();
     self.allocator.destroy(self);
 }
