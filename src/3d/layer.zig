@@ -10,7 +10,7 @@ const Transform = uph3d.Transform;
 pub const Layer = struct {
     ctx: *Renderer.RenderManager = undefined,
 
-    gpu_buffer: uph3d.Objects.GPUObjet = undefined,
+    gpu_buffer: uph3d.Objects.GPUObject = undefined,
 
     pipeline_handle: u32 = undefined,
 
