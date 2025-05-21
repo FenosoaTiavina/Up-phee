@@ -34,9 +34,9 @@ pub fn main() !void {
     };
 
     // Start game loop
-    // while (uph_ctx._running) {
-    //     uph_ctx.tick(game.event, game.update, game.draw);
-    // }
+    while (uph_ctx._running) {
+        uph_ctx.tick(game.event, game.update, game.draw);
+    }
 
     game.quit(ctx);
 }

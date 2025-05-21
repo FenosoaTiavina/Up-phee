@@ -77,9 +77,12 @@ pub fn config(ctx: uph.Context.Context) !uph.Config.Config {
     return new_config;
 }
 
-pub fn init(ctx: uph.Context.Context) !void {
-    try ctx.registerPlugin("test_hotreload", "./libtest_hotreload.so", true);
+var batch: *uph.uph3d.Batch = undefined;
 
+var c2: uph.uph3d.Basic.Cube = undefined;
+var c1: uph.uph3d.Basic.Cube = undefined;
+
+pub fn init(ctx: uph.Context.Context) !void {
     std.log.debug("Hello from entry point", .{}); // Fixed typo
 
     registry = ecs.Registry.init(ctx.allocator());
@@ -99,6 +102,7 @@ pub fn init(ctx: uph.Context.Context) !void {
             45,
         ),
     );
+    // Add camera component
     cam_data = registry.get(uph.uph3d.Camera.Camera, camera_entity);
 
     const g_id1 = try uph.Renderer.createGraphicsPipeline(ctx.renderer(), .{
@@ -128,7 +132,8 @@ pub fn init(ctx: uph.Context.Context) !void {
         .primitive_type = uph.clib.sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .wireframe = false,
     });
-    _ = &g_id1; // autofix
+
+    batch = try uph.uph3d.Batch.init(ctx, g_id1, cam_data);
 
     ctx.renderer().clear(uph.Types.Vec4_f32{
         0.28,
@@ -136,6 +141,10 @@ pub fn init(ctx: uph.Context.Context) !void {
         0.28,
         1.00,
     });
+
+    c1 = uph.uph3d.Basic.Cube.cube();
+
+    try c1.addToBatch(batch);
 }
 
 pub fn event(ctx: uph.Context.Context, e: uph.Input.Event) !void {
@@ -171,11 +180,13 @@ pub fn update(ctx: uph.Context.Context) !void {
 
 pub fn draw(ctx: uph.Context.Context) !void {
     _ = &ctx; // autofix
+    try batch.draw(ctx.deltaTime());
     // Debug: Print batch content information before drawing
 }
 
 pub fn quit(ctx: uph.Context.Context) void {
     // your deinit code
+    batch.deinit();
 
     registry.deinit();
     ctx.allocator().free(ctx.cfg().uph_exe_dir);
