@@ -5,3 +5,4 @@ zig-out
 **.out
 imgui.ini
 assets/shaders/compiled
+.vscode/launch.json

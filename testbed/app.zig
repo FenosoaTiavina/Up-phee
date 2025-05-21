@@ -102,6 +102,7 @@ pub fn init(ctx: uph.Context.Context) !void {
     cam_data = registry.get(uph.uph3d.Camera.Camera, camera_entity);
 
     const g_id1 = try uph.Renderer.createGraphicsPipeline(ctx.renderer(), .{
+        .name = "default",
         .vertex_shader = try uph.Shader.loadShader(ctx.renderer().device, "assets/shaders/compiled/PositionColor.vert.spv", uph.clib.sdl.SDL_GPU_SHADERSTAGE_VERTEX, 1, 0, 0, 0),
         .fragment_shader = try uph.Shader.loadShader(ctx.renderer().device, "assets/shaders/compiled/SolidColor.frag.spv", uph.clib.sdl.SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 0, 0),
         .vertex_input_state = .{
@@ -175,6 +176,7 @@ pub fn draw(ctx: uph.Context.Context) !void {
 
 pub fn quit(ctx: uph.Context.Context) void {
     // your deinit code
-    _ = ctx;
     registry.deinit();
+
+    ctx.allocator().free(ctx.cfg().uph_exe_dir);
 }

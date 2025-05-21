@@ -1,13 +1,13 @@
 const std = @import("std");
 
 const ecs = @import("ecs");
-const zm = @import("zmath");
 const zgui = @import("zgui");
+const zm = @import("zmath");
 
-const Types = @import("types.zig");
+const uph3d = @import("./3d/3d.zig");
 const c = @import("imports.zig");
 const Shader = @import("shader.zig");
-const uph3d = @import("./3d/3d.zig");
+const Types = @import("types.zig");
 
 pub const Window = struct {
     sdl_window: *c.sdl.SDL_Window,
@@ -74,8 +74,8 @@ pub const RenderManager = struct {
     window: Window,
     device: *c.sdl.SDL_GPUDevice,
     default_sampler: *c.sdl.SDL_GPUSampler,
-    command_buffers: std.AutoHashMap(u32, *Cmd),
-    pipelines: std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline),
+    command_list: std.AutoHashMap(u32, *Cmd),
+    pipelines: std.AutoHashMap(u32, Pipeline),
 
     clear_color: Types.Vec4_f32,
     target_info: c.sdl.SDL_GPUColorTargetInfo = undefined,
@@ -111,9 +111,9 @@ pub const RenderManager = struct {
             .window = window,
             .device = device,
             .default_sampler = sampler,
-            .command_buffers = std.AutoHashMap(u32, *Cmd).init(allocator),
+            .command_list = std.AutoHashMap(u32, *Cmd).init(allocator),
             .clear_color = default_color,
-            .pipelines = std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline).init(allocator),
+            .pipelines = std.AutoHashMap(u32, Pipeline).init(allocator),
         };
         return renderer;
     }
@@ -122,18 +122,19 @@ pub const RenderManager = struct {
         var it = self.pipelines.iterator();
 
         while (it.next()) |pipeline_entry| {
-            c.sdl.SDL_ReleaseGPUGraphicsPipeline(self.device, pipeline_entry.value_ptr.*);
+            pipeline_entry.value_ptr.release(self);
             self.pipelines.removeByPtr(pipeline_entry.key_ptr);
         }
 
         self.pipelines.clearAndFree();
         self.pipelines.deinit();
-        var cmd_it = self.command_buffers.iterator();
+
+        var cmd_it = self.command_list.iterator();
 
         while (cmd_it.next()) |cmd| {
             self.allocator.destroy(cmd.value_ptr.*);
         }
-        self.command_buffers.deinit();
+        self.command_list.deinit();
 
         c.sdl.SDL_ReleaseGPUSampler(self.device, self.default_sampler);
 
@@ -152,18 +153,23 @@ pub const RenderManager = struct {
         return @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(h));
     }
 
-    pub fn getPipeline(self: *RenderManager, pipeline_id: u32) !*c.sdl.SDL_GPUGraphicsPipeline {
+    pub fn getPipeline(self: *RenderManager, pipeline_id: u32) !*Pipeline {
         return self.pipelines.get(pipeline_id) orelse {
-            return error.GraphicsPipelineDoesNotExist;
+            return error.PipelineDoesNotExist;
         };
     }
 
-    pub fn bindGraphicsPipeline(
-        self: *RenderManager,
-        render_pass: ?*c.sdl.SDL_GPURenderPass,
-        pipeline_handle: u32,
-    ) !void {
-        c.sdl.SDL_BindGPUGraphicsPipeline(render_pass, try self.getPipeline(pipeline_handle));
+    pub fn bindPipeline(self: *RenderManager, render_pass: ?*c.sdl.SDL_GPURenderPass, pipeline_handle: u32) !void {
+        const p = try self.getPipeline(pipeline_handle);
+
+        switch (p.*) {
+            .graphics => |*graph_p| {
+                c.sdl.SDL_BindGPUGraphicsPipeline(render_pass, graph_p.pipeline);
+            },
+            .compute => {
+                return error.ComputePipelineNotImplemented;
+            },
+        }
     }
 
     pub fn resetCommandBuffer(self: *RenderManager, id: u32) !void {
@@ -171,21 +177,21 @@ pub const RenderManager = struct {
             return error.CommandBufferAcquisitionFailed;
         };
 
-        const old = self.command_buffers.fetchRemove(id) orelse {
+        const old = self.command_list.fetchRemove(id) orelse {
             return error.CmdNotFound;
         };
         self.allocator.destroy(old.value);
 
-        try self.command_buffers.put(id, try Cmd.init(self.allocator, command_buffer));
+        try self.command_list.put(id, try Cmd.init(self.allocator, command_buffer));
     }
 
     pub fn newCommand(self: *RenderManager) !u32 {
         const command_buffer = c.sdl.SDL_AcquireGPUCommandBuffer(self.device) orelse {
             return error.CommandBufferAcquisitionFailed;
         };
-        const id: u32 = self.command_buffers.count();
+        const id: u32 = self.command_list.count();
 
-        try self.command_buffers.put(id, try Cmd.init(self.allocator, command_buffer));
+        try self.command_list.put(id, try Cmd.init(self.allocator, command_buffer));
 
         return id;
     }
@@ -209,7 +215,7 @@ pub const RenderManager = struct {
     }
 
     pub fn getCommandBuffer(self: *RenderManager, command_buffer_id: u32) !*Cmd {
-        return self.command_buffers.get(command_buffer_id) orelse {
+        return self.command_list.get(command_buffer_id) orelse {
             return error.CommandBufferDoesNotExist;
         };
     }
@@ -223,6 +229,50 @@ pub const RenderManager = struct {
             .usage = usage,
             .size = size,
         }) orelse return error.TransferBufferCreationFailed;
+    }
+
+    pub fn releaseTransferBuffer(
+        self: *RenderManager,
+        transfer_buffer: *c.sdl.SDL_GPUTransferBuffer,
+    ) void {
+        c.sdl.SDL_ReleaseGPUTransferBuffer(self.device, transfer_buffer);
+    }
+
+    pub fn uploadToGPU(
+        self: *RenderManager,
+        copy_pass: *c.sdl.SDL_GPUCopyPass,
+        transfer_buffer: *c.sdl.SDL_GPUTransferBuffer,
+        buffer_bytes_offset: u32,
+        comptime T: type,
+        data: []const T,
+        buffer: *c.sdl.SDL_GPUBuffer,
+    ) !void {
+        const total_size: u32 = @intCast(@sizeOf(T) * data.len);
+
+        // Map the buffer memory
+        const transfer_data = c.sdl.SDL_MapGPUTransferBuffer(self.device, transfer_buffer, false) orelse {
+            std.log.err("SDL_MapGPUTransferBuffer Failed (upload_cmdbuf)", .{});
+            return error.MapFailed;
+        };
+
+        // Cast the pointer to bytes and copy the data at the specified offset
+        const transfer_bytes = @as([*]u8, @ptrCast(transfer_data));
+        @memcpy(transfer_bytes[buffer_bytes_offset .. buffer_bytes_offset + total_size], @as([*]const u8, @ptrCast(data.ptr)));
+
+        c.sdl.SDL_UnmapGPUTransferBuffer(self.device, transfer_buffer);
+
+        const transfer_buffer_location = c.sdl.SDL_GPUTransferBufferLocation{
+            .transfer_buffer = transfer_buffer,
+            .offset = buffer_bytes_offset,
+        };
+
+        const buffer_region = c.sdl.SDL_GPUBufferRegion{
+            .buffer = buffer,
+            .offset = 0,
+            .size = total_size,
+        };
+
+        c.sdl.SDL_UploadToGPUBuffer(copy_pass, &transfer_buffer_location, &buffer_region, false);
     }
 
     pub fn clear(self: *RenderManager, color: Types.Vec4_f32) void {
@@ -272,7 +322,7 @@ pub const RenderManager = struct {
     }
 
     pub fn submitFrame(self: *RenderManager) !void {
-        var cit = self.command_buffers.iterator();
+        var cit = self.command_list.iterator();
         while (cit.next()) |cmd_entry| {
             switch (cmd_entry.value_ptr.*.submition) {
                 .submitted => |s| {
@@ -290,7 +340,34 @@ pub const RenderManager = struct {
     }
 };
 
+const PipelineType = enum {
+    graphics,
+    compute,
+};
+
+const Pipeline = union(PipelineType) {
+    graphics: struct {
+        name: []const u8,
+        pipeline: *c.sdl.SDL_GPUGraphicsPipeline,
+    },
+
+    // TODO: Make a proper compute pipeline,
+    compute: void,
+
+    pub fn release(self: *Pipeline, manager: *RenderManager) void {
+        switch (self.*) {
+            .graphics => |*graph_p| {
+                c.sdl.SDL_ReleaseGPUGraphicsPipeline(manager.device, graph_p.pipeline);
+            },
+            .compute => |*comp_p| {
+                _ = &comp_p; // autofix
+            },
+        }
+    }
+};
+
 const GraphicsPipelineDesc = struct {
+    name: []const u8,
     vertex_shader: Shader,
     fragment_shader: Shader,
     vertex_input_state: c.sdl.SDL_GPUVertexInputState,
@@ -322,10 +399,23 @@ pub fn createGraphicsPipeline(renderer: *RenderManager, desc: GraphicsPipelineDe
         },
     };
 
-    const pipeline = c.sdl.SDL_CreateGPUGraphicsPipeline(renderer.device, &pipeline_info) orelse return error.PipelineCreationFailed;
+    const gpu_pipeline = c.sdl.SDL_CreateGPUGraphicsPipeline(renderer.device, &pipeline_info) orelse return error.PipelineCreationFailed;
+
+    const pipeline = Pipeline{
+        .graphics = .{
+            .name = desc.name,
+            .pipeline = gpu_pipeline,
+        },
+    };
     const id: u32 = renderer.pipelines.count();
     try renderer.pipelines.put(@intCast(id), pipeline);
     return id;
+}
+
+pub fn createComputePipeline(renderer: *RenderManager, desc: void) !u32 {
+    _ = renderer; // autofix
+    _ = desc; // autofix
+    return error.NotImplementedYet;
 }
 
 pub fn createBuffer(
@@ -338,43 +428,6 @@ pub fn createBuffer(
         .size = size,
     };
     return c.sdl.SDL_CreateGPUBuffer(device, &buffer_create_info);
-}
-
-pub fn uploadToGPU(
-    device: *c.sdl.SDL_GPUDevice,
-    copy_pass: *c.sdl.SDL_GPUCopyPass,
-    transfer_buffer: *c.sdl.SDL_GPUTransferBuffer,
-    buffer_offset: u32,
-    comptime T: type,
-    data: []const T,
-    buffer: *c.sdl.SDL_GPUBuffer,
-) !void {
-    const total_size: u32 = @intCast(@sizeOf(T) * data.len);
-
-    // Map the buffer memory
-    const transfer_data = c.sdl.SDL_MapGPUTransferBuffer(device, transfer_buffer, false) orelse {
-        std.log.err("SDL_MapGPUTransferBuffer Failed (upload_cmdbuf)", .{});
-        return error.MapFailed;
-    };
-
-    // Cast the pointer to bytes and copy the data at the specified offset
-    const transfer_bytes = @as([*]u8, @ptrCast(transfer_data));
-    @memcpy(transfer_bytes[buffer_offset .. buffer_offset + total_size], @as([*]const u8, @ptrCast(data.ptr)));
-
-    c.sdl.SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
-
-    const transfer_buffer_location = c.sdl.SDL_GPUTransferBufferLocation{
-        .transfer_buffer = transfer_buffer,
-        .offset = buffer_offset,
-    };
-
-    const buffer_region = c.sdl.SDL_GPUBufferRegion{
-        .buffer = buffer,
-        .offset = 0,
-        .size = total_size,
-    };
-
-    c.sdl.SDL_UploadToGPUBuffer(copy_pass, &transfer_buffer_location, &buffer_region, false);
 }
 
 pub fn uploadTextureGPU(

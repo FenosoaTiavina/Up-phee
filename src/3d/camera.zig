@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const uph = @import("../uph.zig");
-
 const zmath = uph.zmath;
 const c = uph.clib;
 const Types = uph.Types;
