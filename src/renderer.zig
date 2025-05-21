@@ -348,6 +348,7 @@ const PipelineType = enum {
 const Pipeline = union(PipelineType) {
     graphics: struct {
         name: []const u8,
+        shaders: []Shader,
         pipeline: *c.sdl.SDL_GPUGraphicsPipeline,
     },
 
@@ -358,6 +359,9 @@ const Pipeline = union(PipelineType) {
         switch (self.*) {
             .graphics => |*graph_p| {
                 c.sdl.SDL_ReleaseGPUGraphicsPipeline(manager.device, graph_p.pipeline);
+                for (graph_p.shaders, 0..graph_p.shaders.len) |value, _| {
+                    c.sdl.SDL_ReleaseGPUShader(manager.device, value.module);
+                }
             },
             .compute => |*comp_p| {
                 _ = &comp_p; // autofix
@@ -378,12 +382,9 @@ const GraphicsPipelineDesc = struct {
 };
 
 pub fn createGraphicsPipeline(renderer: *RenderManager, desc: GraphicsPipelineDesc) !u32 {
-    const shader_vert = desc.vertex_shader.module;
-    const shader_frag = desc.fragment_shader.module;
-
     const pipeline_info = c.sdl.SDL_GPUGraphicsPipelineCreateInfo{
-        .vertex_shader = shader_vert,
-        .fragment_shader = shader_frag,
+        .vertex_shader = desc.vertex_shader.module,
+        .fragment_shader = desc.fragment_shader.module,
         .vertex_input_state = desc.vertex_input_state,
         .target_info = .{
             .num_color_targets = 1,
@@ -405,6 +406,7 @@ pub fn createGraphicsPipeline(renderer: *RenderManager, desc: GraphicsPipelineDe
         .graphics = .{
             .name = desc.name,
             .pipeline = gpu_pipeline,
+            .shaders = &[_]Shader{ desc.vertex_shader, desc.fragment_shader },
         },
     };
     const id: u32 = renderer.pipelines.count();
