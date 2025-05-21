@@ -139,6 +139,7 @@ pub const RenderManager = struct {
         c.sdl.SDL_ReleaseGPUSampler(self.device, self.default_sampler);
 
         c.sdl.SDL_ReleaseWindowFromGPUDevice(self.device, self.window.sdl_window);
+
         c.sdl.SDL_DestroyGPUDevice(self.device);
 
         self.window.deinit();
@@ -153,7 +154,7 @@ pub const RenderManager = struct {
         return @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(h));
     }
 
-    pub fn getPipeline(self: *RenderManager, pipeline_id: u32) !*Pipeline {
+    pub fn getPipeline(self: *RenderManager, pipeline_id: u32) !Pipeline {
         return self.pipelines.get(pipeline_id) orelse {
             return error.PipelineDoesNotExist;
         };
@@ -162,7 +163,7 @@ pub const RenderManager = struct {
     pub fn bindPipeline(self: *RenderManager, render_pass: ?*c.sdl.SDL_GPURenderPass, pipeline_handle: u32) !void {
         const p = try self.getPipeline(pipeline_handle);
 
-        switch (p.*) {
+        switch (p) {
             .graphics => |*graph_p| {
                 c.sdl.SDL_BindGPUGraphicsPipeline(render_pass, graph_p.pipeline);
             },
@@ -402,11 +403,12 @@ pub fn createGraphicsPipeline(renderer: *RenderManager, desc: GraphicsPipelineDe
 
     const gpu_pipeline = c.sdl.SDL_CreateGPUGraphicsPipeline(renderer.device, &pipeline_info) orelse return error.PipelineCreationFailed;
 
+    var _shaders = [_]Shader{ desc.vertex_shader, desc.fragment_shader };
     const pipeline = Pipeline{
         .graphics = .{
             .name = desc.name,
             .pipeline = gpu_pipeline,
-            .shaders = &[_]Shader{ desc.vertex_shader, desc.fragment_shader },
+            .shaders = &_shaders,
         },
     };
     const id: u32 = renderer.pipelines.count();

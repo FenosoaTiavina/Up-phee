@@ -34,8 +34,9 @@ pub const GPUObject = struct {
     index_per_object: u32,
     vertices_per_object: u32,
     object_count: u32,
+    pipeline_handle: u32,
 
-    pub fn init(ctx: uph.Context.Context, max_objects: u32, vertices_per_object: u32, indices_per_object: u32) !*GPUObject {
+    pub fn init(ctx: uph.Context.Context, max_objects: u32, vertices_per_object: u32, indices_per_object: u32, pipeline: u32) !*GPUObject {
         const gpu_obj = try ctx.allocator().create(GPUObject);
         gpu_obj.* = GPUObject{
             .vbo = uph.Renderer.createBuffer(
@@ -54,6 +55,7 @@ pub const GPUObject = struct {
             .max_objects = max_objects,
             .index_per_object = indices_per_object,
             .vertices_per_object = vertices_per_object,
+            .pipeline_handle = pipeline,
         };
         return gpu_obj;
     }
@@ -100,7 +102,48 @@ pub const GPUObject = struct {
         self.object_count += 1;
     }
 
-    pub fn draw(self: *GPUObject, ctx: uph.Context.Context, pipeline: u32) !void {}
+    pub fn draw(self: *GPUObject, ctx: uph.Context.Context) !void {
+        if (self.object_count == 0) return;
+
+        const draw_cmd_id = try ctx.renderer().newCommand();
+        const draw_cmd = try ctx.renderer().getCommandBuffer(draw_cmd_id);
+
+        // Begin render pass
+        const render_pass = c.sdl.SDL_BeginGPURenderPass(draw_cmd.command_buffer, &ctx.renderer().target_info, 1, null);
+        if (render_pass == null) return error.NullRenderPass;
+
+        // Bind graphics pipeline
+        try ctx.renderer().bindPipeline(render_pass, self.pipeline_handle);
+
+        // Bind vertex and index buffers
+        c.sdl.SDL_BindGPUVertexBuffers(render_pass, 0, &.{ .buffer = self.vbo, .offset = 0 }, 1);
+        c.sdl.SDL_BindGPUIndexBuffer(render_pass, &.{ .buffer = self.ibo, .offset = 0 }, c.sdl.SDL_GPU_INDEXELEMENTSIZE_16BIT);
+
+        // Setup transform and uniform buffer data
+        // var trs = Transform.Transform.init();
+        // const ubo = Objects.UniformBufferObject{
+        //     .model = trs.rotate(100, delta_t * 10, 0).model_matrix,
+        //     .view = self.camera.view_matrix,
+        //     .projection = self.camera.projection_matrix,
+        // };
+
+        // // Push uniform data
+        // c.sdl.SDL_PushGPUVertexUniformData(draw_cmd.command_buffer, 0, &ubo, @sizeOf(Objects.UniformBufferObject));
+
+        // Ensure we have indices to draw
+
+        // Draw the primitives
+        c.sdl.SDL_DrawGPUIndexedPrimitives(
+            render_pass,
+            self.index_per_object * self.object_count, // Index count
+            1,
+            0, // Instance count (1 if no instancing)
+            0, // First index
+            0, // Vertex offset
+        );
+        // End render pass
+        c.sdl.SDL_EndGPURenderPass(render_pass);
+    }
 };
 
 pub fn createMesh(vertices: []const Vertex, indices: []const Index) Mesh {

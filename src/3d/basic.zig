@@ -4,7 +4,7 @@ const uph3d = uph.uph3d;
 const c = uph.clib;
 const Types = uph.Types;
 
-const Tri = struct {
+pub const Tri = struct {
     mesh: uph3d.Objects.Mesh,
 
     pub fn init() Tri {

@@ -48,3 +48,7 @@ pub fn loadShader(
     };
     return .{ .module = shader };
 }
+
+pub fn releaseShader(self: *@This(), device: *c.sdl.SDL_GPUDevice) void {
+    c.sdl.SDL_ReleaseGPUShader(device, self.module);
+}
