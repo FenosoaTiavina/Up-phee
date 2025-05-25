@@ -9,9 +9,9 @@ var registry: ecs.Registry = undefined;
 
 var camera_entity: ecs.Entity = undefined;
 
-var cam_data: *uph.uph3d.Camera.Camera = undefined;
+var cam_data: *uph.uph_3d.Camera.Camera = undefined;
 
-pub fn cam_move(cam: *uph.uph3d.Camera.Camera, e: uph.Input.Event, delta_time: f32) void {
+pub fn cam_move(cam: *uph.uph_3d.Camera.Camera, e: uph.Input.Event, delta_time: f32) void {
     _ = &e; // autofix
     // Initialize movement vector
     var movement = uph.Types.Vec3_f32{ 0.0, 0.0, 0.0 };
@@ -45,17 +45,17 @@ pub fn cam_move(cam: *uph.uph3d.Camera.Camera, e: uph.Input.Event, delta_time: f
         // Camera.move function already handles time-based movement with acceleration
 
         // Apply movement to camera - let the camera handle acceleration
-        uph.uph3d.Camera.move(cam, movement, delta_time);
+        uph.uph_3d.Camera.move(cam, movement, delta_time);
     } else {
         // Still call move with zero movement to allow deceleration
-        uph.uph3d.Camera.move(cam, movement, delta_time);
+        uph.uph_3d.Camera.move(cam, movement, delta_time);
     }
 }
 
-pub fn cam_rotate(cam: *uph.uph3d.Camera.Camera, e: uph.Input.Event, delta_time: f32) void {
+pub fn cam_rotate(cam: *uph.uph_3d.Camera.Camera, e: uph.Input.Event, delta_time: f32) void {
     _ = &delta_time; // autofix
     if (e.mouse_motion.relative) {
-        uph.uph3d.Camera.rotate(cam, e.mouse_motion.delta.x, e.mouse_motion.delta.y, 0, true);
+        uph.uph_3d.Camera.rotate(cam, e.mouse_motion.delta.x, e.mouse_motion.delta.y, 0, true);
     }
 }
 
@@ -86,7 +86,7 @@ pub fn init(ctx: uph.Context.Context) !void {
     // Add camera component
     registry.add(
         camera_entity,
-        uph.uph3d.Camera.init(
+        uph.uph_3d.Camera.init(
             .{ 0, 0, -5 },
             .{ 0, 0, 0 },
             ctx.renderer().window.window_dimension,
@@ -96,7 +96,7 @@ pub fn init(ctx: uph.Context.Context) !void {
             45,
         ),
     );
-    cam_data = registry.get(uph.uph3d.Camera.Camera, camera_entity);
+    cam_data = registry.get(uph.uph_3d.Camera.Camera, camera_entity);
 
     const g_id1 = try uph.Pipeline.createGraphicsPipeline(ctx.renderer(), .{
         .vertex_shader = try uph.Shader.loadShader(ctx.renderer().device, "assets/shaders/compiled/PositionColor.vert.spv", uph.clib.sdl.SDL_GPU_SHADERSTAGE_VERTEX, 1, 0, 0, 0),
@@ -104,7 +104,7 @@ pub fn init(ctx: uph.Context.Context) !void {
         .vertex_input_state = .{
             .vertex_buffer_descriptions = &uph.clib.sdl.SDL_GPUVertexBufferDescription{
                 .slot = 0,
-                .pitch = @sizeOf(uph.uph3d.Objects.Vertex),
+                .pitch = @sizeOf(uph.uph_3d.Objects.Vertex),
                 .input_rate = uph.clib.sdl.SDL_GPU_VERTEXINPUTRATE_VERTEX,
                 .instance_step_rate = 0,
             },
@@ -114,7 +114,7 @@ pub fn init(ctx: uph.Context.Context) !void {
                     .location = 0,
                     .buffer_slot = 0,
                     .format = uph.clib.sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-                    .offset = @offsetOf(uph.uph3d.Objects.Vertex, "position"),
+                    .offset = @offsetOf(uph.uph_3d.Objects.Vertex, "position"),
                 },
             },
             .num_vertex_attributes = 1,
@@ -144,7 +144,7 @@ pub fn event(ctx: uph.Context.Context, e: uph.Input.Event) !void {
 
     if (e == .window and e.window.type == .resized) {
         log.debug("Resized", .{});
-        uph.uph3d.Camera.updateResize(cam_data, e.window.type.resized.width, e.window.type.resized.height);
+        uph.uph_3d.Camera.updateResize(cam_data, e.window.type.resized.width, e.window.type.resized.height);
     }
     if (e == .key_down) {
         if (uph.Input.input_manager.isKeyDown(.w) or
