@@ -4,7 +4,7 @@ const ecs = @import("ecs");
 const zgui = @import("zgui");
 const zm = @import("zmath");
 
-const uph3d = @import("./3d/3d.zig");
+const uph_3d = @import("./3d/3d.zig");
 const c = @import("imports.zig");
 const Types = @import("types.zig");
 
@@ -198,7 +198,7 @@ pub fn submitRogueCommand(self: *Renderer, cmd: *Cmd) !void {
     self.allocator.destroy(cmd);
 }
 
-pub fn newCommand(self: *Renderer) !u32 {
+pub fn createCommand(self: *Renderer) !u32 {
     const command_buffer = c.sdl.SDL_AcquireGPUCommandBuffer(self.device) orelse {
         return error.CommandBufferAcquisitionFailed;
     };
