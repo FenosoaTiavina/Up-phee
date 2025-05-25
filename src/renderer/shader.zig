@@ -2,6 +2,8 @@ const std = @import("std");
 const uph = @import("../uph.zig");
 const c = uph.clib;
 
+const Shader = @This();
+
 module: *c.sdl.SDL_GPUShader,
 
 pub fn loadShader(
@@ -12,7 +14,7 @@ pub fn loadShader(
     storage_buffer_count: u32,
     storage_texture_count: u32,
     sampler_count: u32,
-) !@This() {
+) !Shader {
     if (c.sdl.SDL_GetPathInfo(filename, null) == false) {
         std.log.err("File ({s}) does not exist.\n", .{filename});
         return error.FileNotFound;
@@ -51,7 +53,7 @@ pub fn loadShader(
 }
 
 pub fn release(
-    self: *@This(),
+    self: *const Shader,
     device: *c.sdl.SDL_GPUDevice,
 ) void {
     c.sdl.SDL_ReleaseGPUShader(device, self.module);

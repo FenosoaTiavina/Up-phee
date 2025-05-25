@@ -203,7 +203,6 @@ pub fn createCommand(self: *Renderer) !u32 {
         return error.CommandBufferAcquisitionFailed;
     };
     const id: u32 = self.command_buffers.count();
-    std.log.debug("cmd id :{d}", .{id});
 
     try self.command_buffers.put(id, try Cmd.init(self.allocator, command_buffer));
 

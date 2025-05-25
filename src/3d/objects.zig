@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const uph = @import("../uph.zig");
 const c = uph.clib;
 const Renderer = uph.Renderer;
@@ -39,6 +40,14 @@ pub fn createMeshGPU(device: *c.sdl.SDL_GPUDevice, vertex_max: u32, index_max: u
     };
 }
 
+pub fn releaseMeshGPU(
+    device: *c.sdl.SDL_GPUDevice,
+    mesh_gpu: *MeshGPU,
+) void {
+    c.sdl.SDL_ReleaseGPUBuffer(device, mesh_gpu.vbo);
+    c.sdl.SDL_ReleaseGPUBuffer(device, mesh_gpu.ibo);
+}
+
 pub const UniformBufferObject = struct {
     model: Types.Mat4_f32,
     view: Types.Mat4_f32,
@@ -53,79 +62,189 @@ pub fn createMesh(vertices: []const Vertex, indices: []const u16) Mesh {
 }
 
 pub const ObjectInstanceManager = struct {
-    allocator: std.mem.Allocator,
+    const ObjectSSBO = struct {
+        model: Types.Mat4_f32,
+        color: Types.Vec4_f32,
+    };
+
     ctx: uph.Context.Context,
 
     mesh: Mesh,
     gpu_buffer: MeshGPU,
+    object_SSBO_buffer: *c.sdl.SDL_GPUBuffer,
 
     max_object_number: u32,
-    objects_count: u32,
+    objects_count: u32 = 0,
 
-    transforms: std.ArrayList(uph_3d.Transform),
-    colors: std.ArrayList(Types.Vec4_f32),
+    renderpass: *c.sdl.SDL_GPURenderPass = undefined,
+
+    camera: *uph_3d.Camera.Camera,
+
+    draw_cmd_handle: u32 = undefined,
+    draw_cmd: *uph.Renderer.Cmd = undefined,
 
     pipeline: u32,
 
     // textures: std.ArrayList(u64); array to handle of a bindless texture?
 
-    pub fn init(ctx: uph.Context.Context, mesh: Mesh, allocaltor: std.mem.Allocator, max_objects_number: u32, pipeline: u32) !*ObjectInstanceManager {
-        const obj_man = try allocaltor.create(ObjectInstanceManager);
+    pub fn init(
+        ctx: uph.Context.Context,
+        mesh: Mesh,
+        max_objects_number: u32,
+        pipeline: u32,
+        camera: *uph_3d.Camera.Camera,
+    ) !*ObjectInstanceManager {
+        const obj_man = try ctx.renderer().allocator.create(ObjectInstanceManager);
+
         obj_man.*.ctx = ctx;
         obj_man.*.mesh = mesh;
         obj_man.*.gpu_buffer = createMeshGPU(ctx.renderer().device, @intCast(mesh.vertices.len), @intCast(mesh.indices.len));
+        obj_man.*.object_SSBO_buffer = uph.Buffer.createBuffer(
+            ctx.renderer().device,
+            c.sdl.SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ,
+            @intCast(@sizeOf(ObjectSSBO) * max_objects_number),
+        ).?;
         obj_man.*.max_object_number = max_objects_number;
-        obj_man.*.allocator = allocaltor;
         obj_man.*.objects_count = 0;
-        obj_man.*.transforms = std.ArrayList(Types.Mat4_f32).init(allocaltor);
-        obj_man.*.colors = std.ArrayList(Types.Vec4_f32).init(allocaltor);
+        obj_man.*.camera = camera;
         obj_man.*.pipeline = pipeline;
+        obj_man.*.draw_cmd_handle = try ctx.renderer().createCommand();
+
+        // copy values to GPU buffer
+        {
+            const upload_cmd = try ctx.renderer().createRogueCommand();
+
+            const copypass = c.sdl.SDL_BeginGPUCopyPass(upload_cmd.command_buffer) orelse {
+                try ctx.renderer().submitRogueCommand(upload_cmd);
+
+                return error.CopypassFailed;
+            };
+
+            const transferbuffer = try ctx.renderer().createTransferBuffer(
+                c.sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+                @intCast((mesh.vertices.len * @sizeOf(Vertex)) + (mesh.indices.len * @sizeOf(Index))),
+            );
+            defer c.sdl.SDL_ReleaseGPUTransferBuffer(ctx.renderer().device, transferbuffer);
+
+            try uph.Buffer.uploadToGPU(
+                ctx.renderer().device,
+                copypass,
+                transferbuffer,
+                0,
+                Vertex,
+                mesh.vertices,
+                obj_man.gpu_buffer.vbo,
+            );
+            try uph.Buffer.uploadToGPU(
+                ctx.renderer().device,
+                copypass,
+                transferbuffer,
+                @intCast(mesh.vertices.len * @sizeOf(Vertex)),
+                Index,
+                mesh.indices,
+                obj_man.gpu_buffer.ibo,
+            );
+            c.sdl.SDL_EndGPUCopyPass(copypass);
+
+            try ctx.renderer().submitRogueCommand(upload_cmd);
+        }
 
         return obj_man;
     }
 
-    fn beginBraw(self: *ObjectInstanceManager) void {
-        _ = &self; // autofix
-        // Bind Pipeline
+    pub fn deinit(self: *ObjectInstanceManager) void {
+        // Release all buffer
 
+        releaseMeshGPU(self.ctx.renderer().device, &self.gpu_buffer);
+
+        c.sdl.SDL_ReleaseGPUBuffer(self.ctx.renderer().device, self.object_SSBO_buffer);
+
+        self.ctx.allocator().destroy(self);
     }
 
-    fn Draw(
+    pub fn beginDraw(self: *ObjectInstanceManager) !void {
+        _ = self; // autofix
+    }
+
+    pub fn draw(
         self: *ObjectInstanceManager,
         transform: Types.Mat4_f32,
         color: Types.Vec4_f32,
     ) !void {
         if (self.max_object_number == self.max_object_number) {
-            self.endDraw();
-            self.beginBraw();
+            try self.endDraw();
+            try self.beginDraw();
         }
 
-        try self.transforms.append(transform);
-        try self.colors.append(color);
+        {
+            const upload_cmd = try self.ctx.renderer().createRogueCommand();
 
+            const copypass = c.sdl.SDL_BeginGPUCopyPass(upload_cmd.command_buffer) orelse {
+                return error.CopypassFailed;
+            };
+
+            const transferbuffer = try self.ctx.renderer().createTransferBuffer(
+                c.sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+                @intCast(@sizeOf(ObjectSSBO)),
+            );
+            defer c.sdl.SDL_ReleaseGPUTransferBuffer(self.ctx.renderer().device, transferbuffer);
+
+            try uph.Buffer.uploadToGPU(
+                self.ctx.renderer().device,
+                copypass,
+                transferbuffer,
+                @intCast(@sizeOf(ObjectSSBO) * self.objects_count),
+                ObjectSSBO,
+                &[_]ObjectSSBO{.{
+                    .model = transform,
+                    .color = color,
+                }},
+                self.object_SSBO_buffer,
+            );
+            c.sdl.SDL_EndGPUCopyPass(copypass);
+
+            try self.ctx.renderer().submitRogueCommand(upload_cmd);
+        }
         self.objects_count += 1;
     }
 
-    fn endDraw(self: *ObjectInstanceManager) !void {
+    pub fn endDraw(self: *ObjectInstanceManager) !void {
         _ = &self; // autofix
+        if (self.objects_count == 0) return;
 
-        // copy values to GPU buffer
         {
-            const upload_cmd = try self.ctx.renderer().createRogueCommand();
-            defer self.ctx.renderer().submitRogueCommand(upload_cmd);
-
-            // bind color buffer?
-
+            // create Renderpass
+            self.draw_cmd = try self.ctx.renderer().getCommand(self.draw_cmd_handle);
+            self.renderpass = c.sdl.SDL_BeginGPURenderPass(self.draw_cmd.command_buffer, &self.ctx.renderer().target_info, 1, null) orelse {
+                return error.RenderpassFailed;
+            };
         }
 
-        // submit draw call
-        {}
+        // Bind Pipeline
+        {
+            try self.ctx.renderer().bindGraphicsPipeline(self.renderpass, self.pipeline);
+        }
+
+        //  bind ssbo / uniform / textures
+        c.sdl.SDL_BindGPUVertexStorageBuffers(self.renderpass, 0, &self.object_SSBO_buffer, 1);
+
+        const ViewProj = struct {
+            view: Types.Mat4_f32,
+            projection: Types.Mat4_f32,
+        };
+        const view_proj: ViewProj = .{
+            .view = self.camera.view_matrix,
+            .projection = self.camera.projection.getProjection(),
+        };
+        c.sdl.SDL_PushGPUVertexUniformData(self.draw_cmd.command_buffer, 0, &view_proj, @sizeOf(ViewProj));
+
+        // instanced draw command
+        c.sdl.SDL_DrawGPUIndexedPrimitives(self.renderpass, @intCast(self.mesh.indices.len), self.objects_count, 0, 0, 1);
+
+        // end renderpass
+        c.sdl.SDL_EndGPURenderPass(self.renderpass);
 
         // clear buffer & reset counter
-        {
-            self.transforms.clearRetainingCapacity;
-            self.colors.clearRetainingCapacity();
-            self.objects_count = 0;
-        }
+        self.objects_count = 0;
     }
 };
