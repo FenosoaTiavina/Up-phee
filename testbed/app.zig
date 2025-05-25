@@ -5,19 +5,14 @@ const uph = @import("uph");
 const zgui = uph.zgui;
 const ecs = uph.ecs;
 
-// Initialize the ECS registry
 var registry: ecs.Registry = undefined;
 
 var camera_entity: ecs.Entity = undefined;
 
 var cam_data: *uph.uph3d.Camera.Camera = undefined;
 
-const log = std.log.scoped(.GAME);
-
-const String = []const u8;
-
 pub fn cam_move(cam: *uph.uph3d.Camera.Camera, e: uph.Input.Event, delta_time: f32) void {
-    _ = e; // autofix
+    _ = &e; // autofix
     // Initialize movement vector
     var movement = uph.Types.Vec3_f32{ 0.0, 0.0, 0.0 };
 
@@ -67,7 +62,7 @@ pub fn cam_rotate(cam: *uph.uph3d.Camera.Camera, e: uph.Input.Event, delta_time:
 pub fn config(ctx: uph.Context.Context) !uph.Config.Config {
     const exe_path = try std.fs.selfExePathAlloc(ctx.allocator());
     defer ctx.allocator().free(exe_path);
-    const opt_exe_dir: String = std.fs.path.dirname(exe_path) orelse {
+    const opt_exe_dir: []const u8 = std.fs.path.dirname(exe_path) orelse {
         return error.ExeDirFail;
     };
     var new_config = ctx.cfg();
@@ -76,6 +71,8 @@ pub fn config(ctx: uph.Context.Context) !uph.Config.Config {
 
     return new_config;
 }
+
+const log = std.log.scoped(.GAME);
 
 pub fn init(ctx: uph.Context.Context) !void {
     try ctx.registerPlugin("test_hotreload", "./libtest_hotreload.so", true);
@@ -129,12 +126,14 @@ pub fn init(ctx: uph.Context.Context) !void {
     });
     _ = &g_id1; // autofix
 
-    ctx.renderer().clear(uph.Types.Vec4_f32{
+    ctx.renderer().setClearColor(uph.Types.Vec4_f32{
         0.28,
         0.28,
         0.28,
         1.00,
     });
+
+    _ = &g_id1; // autofix
 }
 
 pub fn event(ctx: uph.Context.Context, e: uph.Input.Event) !void {
@@ -175,6 +174,8 @@ pub fn draw(ctx: uph.Context.Context) !void {
 
 pub fn quit(ctx: uph.Context.Context) void {
     // your deinit code
-    _ = ctx;
+    _ = &ctx;
+
     registry.deinit();
+    ctx.allocator().free(ctx.cfg().uph_exe_dir);
 }

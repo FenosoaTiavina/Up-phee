@@ -1,5 +1,7 @@
 const std = @import("std");
 const c = @import("./imports.zig");
+
+shader_type: u32,
 module: *c.sdl.SDL_GPUShader,
 
 pub fn loadShader(

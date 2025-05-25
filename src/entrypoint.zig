@@ -39,5 +39,4 @@ pub fn main() !void {
     }
 
     game.quit(ctx);
-    uph_ctx.destroy();
 }

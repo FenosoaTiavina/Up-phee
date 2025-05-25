@@ -79,6 +79,7 @@ pub const RenderManager = struct {
 
     clear_color: Types.Vec4_f32,
     target_info: c.sdl.SDL_GPUColorTargetInfo = undefined,
+    swapchain_texture: ?*c.sdl.SDL_GPUTexture = null,
 
     pub fn init(allocator: std.mem.Allocator, width: u32, height: u32, title: [*:0]const u8) !*RenderManager {
         var window = try Window.init(width, height, title);
@@ -179,15 +180,12 @@ pub const RenderManager = struct {
         try self.command_buffers.put(id, try Cmd.init(self.allocator, command_buffer));
     }
 
-    pub fn newCommand(self: *RenderManager) !u32 {
+    pub fn createRogueCommand(self: *RenderManager) !*Cmd {
         const command_buffer = c.sdl.SDL_AcquireGPUCommandBuffer(self.device) orelse {
             return error.CommandBufferAcquisitionFailed;
         };
-        const id: u32 = self.command_buffers.count();
 
-        try self.command_buffers.put(id, try Cmd.init(self.allocator, command_buffer));
-
-        return id;
+        return try Cmd.init(self.allocator, command_buffer);
     }
 
     pub fn submitRogueCommand(self: *RenderManager, cmd: *Cmd) !void {
@@ -200,18 +198,33 @@ pub const RenderManager = struct {
         self.allocator.destroy(cmd);
     }
 
-    pub fn createRogueCommand(self: *RenderManager) !*Cmd {
+    pub fn newCommand(self: *RenderManager) !u32 {
         const command_buffer = c.sdl.SDL_AcquireGPUCommandBuffer(self.device) orelse {
             return error.CommandBufferAcquisitionFailed;
         };
+        const id: u32 = self.command_buffers.count();
+        std.log.debug("cmd id :{d}", .{id});
 
-        return try Cmd.init(self.allocator, command_buffer);
+        try self.command_buffers.put(id, try Cmd.init(self.allocator, command_buffer));
+
+        return id;
     }
 
-    pub fn getCommandBuffer(self: *RenderManager, command_buffer_id: u32) !*Cmd {
+    pub fn getCommand(self: *RenderManager, command_buffer_id: u32) !*Cmd {
         return self.command_buffers.get(command_buffer_id) orelse {
             return error.CommandBufferDoesNotExist;
         };
+    }
+
+    pub fn submitCommand(self: *RenderManager, cmd_handle: u32) !void {
+        const cmd = try self.getCommand(cmd_handle);
+
+        if (!cmd.sumbit()) {
+            std.log.err("Failed cmd_buf.Submit {s} ", .{c.sdl.SDL_GetError()});
+            return error.CommandBufferSubmit;
+        }
+
+        try self.resetCommandBuffer(cmd_handle);
     }
 
     pub fn createTransferBuffer(
@@ -225,22 +238,17 @@ pub const RenderManager = struct {
         }) orelse return error.TransferBufferCreationFailed;
     }
 
-    pub fn clear(self: *RenderManager, color: Types.Vec4_f32) void {
-        self.clear_color = color;
-    }
-
-    pub fn setTargetColor(self: *RenderManager, cmd: *Cmd) !void {
-        var swapchain_texture: ?*c.sdl.SDL_GPUTexture = null;
-        if (c.sdl.SDL_WaitAndAcquireGPUSwapchainTexture(cmd.command_buffer, self.*.window.sdl_window, &swapchain_texture, null, null) == false) {
+    pub fn clear(self: *RenderManager) !void {
+        const cmd = try self.createRogueCommand();
+        if (c.sdl.SDL_WaitAndAcquireGPUSwapchainTexture(cmd.command_buffer, self.*.window.sdl_window, &self.swapchain_texture, null, null) == false) {
             return error.SwapchainAcquisitionFailed;
         }
-
-        if (swapchain_texture == null) {
+        if (self.swapchain_texture == null) {
             return error.NullSwapchainTexture;
         }
 
         self.target_info = c.sdl.SDL_GPUColorTargetInfo{
-            .texture = swapchain_texture,
+            .texture = self.swapchain_texture,
             .clear_color = .{
                 .r = self.clear_color[0],
                 .g = self.clear_color[1],
@@ -250,25 +258,16 @@ pub const RenderManager = struct {
             .load_op = c.sdl.SDL_GPU_LOADOP_CLEAR,
             .store_op = c.sdl.SDL_GPU_STOREOP_STORE,
         };
+        try self.submitRogueCommand(cmd);
+    }
+
+    pub fn setClearColor(self: *RenderManager, color: Types.Vec4_f32) void {
+        self.clear_color = color;
     }
 
     pub fn beginFrame(self: *RenderManager) !void {
-        _ = self; // autofix
-
-        // zgui.backend.prepareDrawData(@ptrCast(command_buffer));
-
-        // const padding: f32 = 0.1;
-        // const padding_x = @as(f32, @floatFromInt(self.window.getSize().width)) * padding;
-        // const padding_y = @as(f32, @floatFromInt(self.window.getSize().height)) * padding;
-        // const viewport = c.sdl.SDL_GPUViewport{
-        //     .x = padding_x,
-        //     .y = padding_y,
-        //     .w = @as(f32, @floatFromInt(self.window.getSize().width)) - (padding_x * 2),
-        //     .h = @as(f32, @floatFromInt(self.window.getSize().height)) - (padding_y * 2),
-        //     .max_depth = 1,
-        //     .min_depth = 0.1,
-        // };
-        // c.sdl.SDL_SetGPUViewport(self.render_pass, &viewport);
+        _ = &self; // autofix
+        try self.clear();
     }
 
     pub fn submitFrame(self: *RenderManager) !void {
@@ -276,16 +275,17 @@ pub const RenderManager = struct {
         while (cit.next()) |cmd_entry| {
             switch (cmd_entry.value_ptr.*.submition) {
                 .submitted => |s| {
-                    if (!s) {
+                    if (s == false) {
+                        std.log.debug("sumbit cmd id :{d}", .{cmd_entry.key_ptr.*});
                         if (!cmd_entry.value_ptr.*.sumbit()) {
                             std.log.err("Failed cmd_buf.Submit {s} ", .{c.sdl.SDL_GetError()});
                             return error.CommandBufferSubmit;
                         }
                     }
+                    try self.resetCommandBuffer(cmd_entry.key_ptr.*);
                 },
                 .rogue => {},
             }
-            try self.resetCommandBuffer(cmd_entry.key_ptr.*);
         }
     }
 };
