@@ -4,8 +4,8 @@ const builtin = @import("builtin");
 const bos = @import("build_options");
 
 const config = @import("config.zig");
-const PluginSystem = @import("plugin.zig");
 const uph = @import("uph.zig");
+const PluginSystem = uph.PluginSystem;
 const sdl = uph.clib.sdl;
 const c = uph.clib;
 const zgui = uph.zgui;
@@ -24,7 +24,7 @@ pub const Context = struct {
         deltaTime: *const fn (ctx: *anyopaque) f32,
         fps: *const fn (ctx: *anyopaque) f32,
         window: *const fn (ctx: *anyopaque) *uph.Renderer.Window,
-        renderer: *const fn (ctx: *anyopaque) *uph.Renderer.RenderManager,
+        renderer: *const fn (ctx: *anyopaque) *uph.Renderer,
         kill: *const fn (ctx: *anyopaque, bool) void,
         registerPlugin: *const fn (ctx: *anyopaque, name: []const u8, path: []const u8, hotreload: bool) anyerror!void,
         unregisterPlugin: *const fn (ctx: *anyopaque, name: []const u8) anyerror!void,
@@ -71,7 +71,7 @@ pub const Context = struct {
         return self.vtable.eventManager(self.ctx);
     }
 
-    pub fn renderer(self: Context) *uph.Renderer.RenderManager {
+    pub fn renderer(self: Context) *uph.Renderer {
         return self.vtable.renderer(self.ctx);
     }
 
@@ -120,8 +120,8 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
         // Internal window
         _window: *uph.Renderer.Window = undefined,
-        // RenderManager instance
-        _renderer: *uph.Renderer.RenderManager = undefined,
+        // Renderer instance
+        _renderer: *uph.Renderer = undefined,
 
         _plugin_system: *PluginSystem = undefined,
 
@@ -153,7 +153,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
             self._ctx = self.context();
 
             // Init SDL window and renderer
-            self._renderer = @constCast(try uph.Renderer.RenderManager.init(
+            self._renderer = @constCast(try uph.Renderer.init(
                 self.context().allocator(),
                 self.context().cfg().uph_window_size.custom.width,
                 self.context().cfg().uph_window_size.custom.height,
@@ -314,7 +314,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
                 \\    Memory      : {d}MB
                 \\    App Dir     : {s} 
                 \\    
-                \\RenderManager info:
+                \\Renderer info:
                 \\    Driver           : {s}
                 \\    Vertical Sync    : {}
                 \\    Max Texture Size : {d}*{d}
@@ -412,7 +412,7 @@ pub fn uphContext(comptime cfg: config.Config) type {
         }
 
         /// Get renderer
-        fn renderer(ptr: *anyopaque) *uph.Renderer.RenderManager {
+        fn renderer(ptr: *anyopaque) *uph.Renderer {
             const self: *@This() = @ptrCast(@alignCast(ptr));
             return self._renderer;
         }

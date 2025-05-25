@@ -82,7 +82,7 @@ pub fn createApp(
     });
 
     const root = b.createModule(.{
-        .root_source_file = b.path("src/entrypoint.zig"),
+        .root_source_file = b.path("src/app/entrypoint.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -200,7 +200,7 @@ pub fn createPlugin(
     // Create root module
     const builder = getUphBuilder(b, opt.dep_name);
     const root = b.createModule(.{
-        .root_source_file = builder.path("src/plugin_entry.zig"),
+        .root_source_file = builder.path("src/plugin/plugin_entry.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{

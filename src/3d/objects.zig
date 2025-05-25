@@ -3,7 +3,7 @@ const std = @import("std");
 const c = @import("../imports.zig");
 const Renderer = @import("../renderer.zig");
 const Types = @import("../types.zig");
-const uph3d = @import("./3d.zig");
+const uph_3d = @import("./3d.zig");
 const Transform = @import("transform.zig").Transform;
 
 pub const Vertex = struct {

@@ -1,7 +1,7 @@
 const std = @import("std");
 const uph = @import("uph");
 const plugin = @import("plugin");
-const compcheck = @import("app_check.zig");
+const compcheck = @import("./plugin_check.zig");
 const log = std.log.scoped(.uph);
 
 // Validate plugin object

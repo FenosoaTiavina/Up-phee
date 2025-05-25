@@ -7,7 +7,7 @@ const imgui = uph.imgui;
 pub const uph_window_always_on_top = true;
 
 pub fn init(ctx: uph.Context.Context) !void {
-    _ = ctx; // autofix
+    _ = &ctx; // autofix
 }
 
 pub fn event(ctx: uph.Context.Context, e: uph.Input.Event) !void {

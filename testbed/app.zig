@@ -53,7 +53,7 @@ pub fn cam_move(cam: *uph.uph3d.Camera.Camera, e: uph.Input.Event, delta_time: f
 }
 
 pub fn cam_rotate(cam: *uph.uph3d.Camera.Camera, e: uph.Input.Event, delta_time: f32) void {
-    _ = delta_time; // autofix
+    _ = &delta_time; // autofix
     if (e.mouse_motion.relative) {
         uph.uph3d.Camera.rotate(cam, e.mouse_motion.delta.x, e.mouse_motion.delta.y, 0, true);
     }
@@ -98,7 +98,7 @@ pub fn init(ctx: uph.Context.Context) !void {
     );
     cam_data = registry.get(uph.uph3d.Camera.Camera, camera_entity);
 
-    const g_id1 = try uph.Renderer.createGraphicsPipeline(ctx.renderer(), .{
+    const g_id1 = try uph.Pipeline.createGraphicsPipeline(ctx.renderer(), .{
         .vertex_shader = try uph.Shader.loadShader(ctx.renderer().device, "assets/shaders/compiled/PositionColor.vert.spv", uph.clib.sdl.SDL_GPU_SHADERSTAGE_VERTEX, 1, 0, 0, 0),
         .fragment_shader = try uph.Shader.loadShader(ctx.renderer().device, "assets/shaders/compiled/SolidColor.frag.spv", uph.clib.sdl.SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 0, 0),
         .vertex_input_state = .{

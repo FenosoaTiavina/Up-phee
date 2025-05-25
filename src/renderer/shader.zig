@@ -1,7 +1,7 @@
 const std = @import("std");
-const c = @import("./imports.zig");
+const uph = @import("../uph.zig");
+const c = uph.clib;
 
-shader_type: u32,
 module: *c.sdl.SDL_GPUShader,
 
 pub fn loadShader(
@@ -48,4 +48,11 @@ pub fn loadShader(
         return error.ShaderCreation;
     };
     return .{ .module = shader };
+}
+
+pub fn release(
+    self: *@This(),
+    device: *c.sdl.SDL_GPUDevice,
+) void {
+    c.sdl.SDL_ReleaseGPUShader(device, self.module);
 }

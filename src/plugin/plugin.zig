@@ -1,6 +1,6 @@
 const std = @import("std");
 const DynLib = std.DynLib;
-const uph = @import("uph.zig");
+const uph = @import("../uph.zig");
 const log = std.log.scoped(.uph);
 const Self = @This();
 
