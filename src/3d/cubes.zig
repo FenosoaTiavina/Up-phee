@@ -73,14 +73,6 @@ pub const Cube = struct {
     object: *Objects.ObjectInstanceManager,
     ctx: uph.Context.Context,
     mesh: Objects.Mesh,
-    pub fn cube() Cube {
-        return Cube{
-            .object = .{
-                .mesh = Objects.createMesh(&cube_verts, &cube_indices),
-                .model = Transform.Transform.init(),
-            },
-        };
-    }
 
     pub fn init(ctx: uph.Context.Context, pipeline: u32, camera: *uph.uph_3d.Camera.Camera, max_cube_objects: u32) !*Cube {
         const _cube = try ctx.allocator().create(Cube);

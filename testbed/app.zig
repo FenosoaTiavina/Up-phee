@@ -101,13 +101,29 @@ pub fn init(ctx: uph.Context.Context) !void {
     cam_data = registry.get(uph.uph_3d.Camera.Camera, camera_entity);
 
     const g_id1 = try uph.Pipeline.createGraphicsPipeline(ctx.renderer(), .{
-        .vertex_shader = try uph.Shader.loadShader(ctx.renderer().device, "assets/shaders/compiled/instanced.vert.spv", uph.clib.sdl.SDL_GPU_SHADERSTAGE_VERTEX, 1, 0, 0, 0),
-        .fragment_shader = try uph.Shader.loadShader(ctx.renderer().device, "assets/shaders/compiled/SolidColor.frag.spv", uph.clib.sdl.SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0, 0, 0),
+        .vertex_shader = try uph.Shader.loadShader(
+            ctx.renderer().device,
+            "assets/shaders/compiled/instanced.vert.spv",
+            uph.clib.sdl.SDL_GPU_SHADERSTAGE_VERTEX,
+            1, // num_uniform_buffers (ViewProj + any others)
+            1, // num_storage_buffers (ObjectBuffer SSBO)
+            0, // num_storage_textures
+            0, // num_samplers (set this based on your shader's needs)
+        ),
+        .fragment_shader = try uph.Shader.loadShader(
+            ctx.renderer().device,
+            "assets/shaders/compiled/SolidColor.frag.spv",
+            uph.clib.sdl.SDL_GPU_SHADERSTAGE_FRAGMENT,
+            0,
+            0,
+            0,
+            0,
+        ),
         .vertex_input_state = .{
             .vertex_buffer_descriptions = &uph.clib.sdl.SDL_GPUVertexBufferDescription{
                 .slot = 0,
                 .pitch = @sizeOf(uph.uph_3d.Objects.Vertex),
-                .input_rate = uph.clib.sdl.SDL_GPU_VERTEXINPUTRATE_INSTANCE,
+                .input_rate = uph.clib.sdl.SDL_GPU_VERTEXINPUTRATE_VERTEX, // Changed from INSTANCE
                 .instance_step_rate = 0,
             },
             .num_vertex_buffers = 1,
@@ -135,9 +151,7 @@ pub fn init(ctx: uph.Context.Context) !void {
         1.00,
     });
 
-    _ = &g_id1; // autofix
-    //
-    cube_manager = try uph.uph_3d.Cubes.Cube.init(ctx, g_id1, cam_data, 5);
+    cube_manager = try uph.uph_3d.Cubes.Cube.init(ctx, g_id1, cam_data, 10);
 }
 
 pub fn event(ctx: uph.Context.Context, e: uph.Input.Event) !void {
@@ -174,21 +188,22 @@ pub fn update(ctx: uph.Context.Context) !void {
 pub fn draw(ctx: uph.Context.Context) !void {
     _ = &ctx; // autofix
     try cube_manager.beginDraw();
-    for (0..2) |i| {
-        var t = uph.uph_3d.Transform.init();
-        _ = t
-            .setPosition(uph.Types.Vec3_f32{
-                @as(f32, @floatFromInt(i)) / 2.0,
-                0,
-                0,
-            })
-            .setRotation(uph.Types.Vec3_f32{
-            std.math.degreesToRadians(@as(f32, @floatFromInt(45 * i))),
-            std.math.degreesToRadians(@as(f32, @floatFromInt(21 * i))),
-            std.math.degreesToRadians(@as(f32, @floatFromInt(20 * i))),
-        });
-        try cube_manager.draw(t, .{ 0.1, 0.7, 0.5, 1.0 });
-    }
+    var t = uph.uph_3d.Transform.init();
+    _ = t
+        .setPosition(uph.Types.Vec3_f32{
+        0,
+        0,
+        5,
+    })
+    //     .setRotation(
+    //     uph.Types.Vec3_f32{
+    //         std.math.degreesToRadians(@as(f32, @floatFromInt(45 * i))),
+    //         std.math.degreesToRadians(@as(f32, @floatFromInt(21 * i))),
+    //         std.math.degreesToRadians(@as(f32, @floatFromInt(20 * i))),
+    //     },
+    // )
+    ;
+    try cube_manager.draw(t, .{ 0.1, 0.7, 0.5, 1.0 });
 
     try cube_manager.endDraw();
     // Debug: Print batch content information before drawing

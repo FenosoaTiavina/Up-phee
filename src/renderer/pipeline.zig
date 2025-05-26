@@ -38,7 +38,7 @@ pub fn createGraphicsPipeline(renderer: *uph.Renderer, desc: GraphicsPipelineDes
     const id: u32 = renderer.pipelines.count();
     try renderer.pipelines.put(@intCast(id), pipeline);
 
-    desc.vertex_shader.release(renderer.device);
-    desc.fragment_shader.release(renderer.device);
+    // desc.vertex_shader.release(renderer.device);
+    // desc.fragment_shader.release(renderer.device);
     return id;
 }

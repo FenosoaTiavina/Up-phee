@@ -77,7 +77,10 @@ default_sampler: *c.sdl.SDL_GPUSampler,
 command_buffers: std.AutoHashMap(u32, *Cmd),
 pipelines: std.AutoHashMap(u32, *c.sdl.SDL_GPUGraphicsPipeline),
 
-clear_color: Types.Vec4_f32,
+clear_color: Types.Vec4_f32 = .{
+    0.13, 0.13, 0.13, 1.00,
+},
+
 target_info: c.sdl.SDL_GPUColorTargetInfo = undefined,
 swapchain_texture: ?*c.sdl.SDL_GPUTexture = null,
 
@@ -226,19 +229,9 @@ pub fn submitCommand(self: *Renderer, cmd_handle: u32) !void {
     try self.resetCommandBuffer(cmd_handle);
 }
 
-pub fn createTransferBuffer(
-    self: *Renderer,
-    usage: c.sdl.SDL_GPUTransferBufferUsage,
-    size: u32,
-) !*c.sdl.SDL_GPUTransferBuffer {
-    return c.sdl.SDL_CreateGPUTransferBuffer(self.device, &.{
-        .usage = usage,
-        .size = size,
-    }) orelse return error.TransferBufferCreationFailed;
-}
+pub fn acquireSwapchainTexture(self: *Renderer, cmd_handle: u32) !void {
+    const cmd = try self.getCommand(cmd_handle);
 
-pub fn clear(self: *Renderer) !void {
-    const cmd = try self.createRogueCommand();
     if (c.sdl.SDL_WaitAndAcquireGPUSwapchainTexture(cmd.command_buffer, self.*.window.sdl_window, &self.swapchain_texture, null, null) == false) {
         return error.SwapchainAcquisitionFailed;
     }
@@ -257,16 +250,25 @@ pub fn clear(self: *Renderer) !void {
         .load_op = c.sdl.SDL_GPU_LOADOP_CLEAR,
         .store_op = c.sdl.SDL_GPU_STOREOP_STORE,
     };
-    try self.submitRogueCommand(cmd);
 }
 
 pub fn setClearColor(self: *Renderer, color: Types.Vec4_f32) void {
     self.clear_color = color;
 }
 
+pub fn createTransferBuffer(
+    self: *Renderer,
+    usage: c.sdl.SDL_GPUTransferBufferUsage,
+    size: u32,
+) !*c.sdl.SDL_GPUTransferBuffer {
+    return c.sdl.SDL_CreateGPUTransferBuffer(self.device, &.{
+        .usage = usage,
+        .size = size,
+    }) orelse return error.TransferBufferCreationFailed;
+}
+
 pub fn beginFrame(self: *Renderer) !void {
     _ = &self; // autofix
-    try self.clear();
 }
 
 pub fn submitFrame(self: *Renderer) !void {
