@@ -8,16 +8,16 @@ const Types = uph.Types;
 
 pub const ProjectionPrespective = struct {
     fov: f32,
-    w: f32,
-    h: f32,
+    w: u32,
+    h: u32,
     near: f32,
     far: f32,
     projection_matrix: Types.Mat4_f32 = undefined,
 };
 
 pub const ProjectionOrthographic = struct {
-    w: f32,
-    h: f32,
+    w: u32,
+    h: u32,
     near: f32,
     far: f32,
     projection_matrix: Types.Mat4_f32 = undefined,
@@ -33,7 +33,7 @@ pub const Projection = struct {
         prespective: ProjectionPrespective,
     },
 
-    pub fn create(projection_type: ProjectionTag, w: f32, h: f32, near: f32, far: f32, fov: ?f32) Projection {
+    pub fn create(projection_type: ProjectionTag, w: u32, h: u32, near: f32, far: f32, fov: ?f32) Projection {
         switch (projection_type) {
             .ortho => {
                 return Projection{
@@ -66,21 +66,22 @@ pub const Projection = struct {
     pub fn getProjection(self: *Projection) Types.Mat4_f32 {
         switch (self.procjetion) {
             .ortho => |*o| {
-                return zmath.orthographicRhGl(o.w, o.h, o.near, o.far);
+                return zmath.orthographicRhGl(@floatFromInt(o.w), @floatFromInt(o.h), o.near, o.far);
             },
             .prespective => |*p| {
-                return zmath.perspectiveFovRhGl(p.fov, p.w / p.h, p.near, p.far);
+                const aspect: f32 = @as(f32, @floatFromInt(p.w)) / @as(f32, @floatFromInt(p.h));
+                return zmath.perspectiveFovRhGl(p.fov, aspect, p.near, p.far);
             },
         }
     }
 
-    pub fn update(self: *Projection, w: f32, h: f32) void {
+    pub fn update(self: *Projection, w: u32, h: u32) void {
         switch (self.procjetion) {
             .ortho => |*o| {
                 o.h = h;
                 o.w = w;
             },
-            .perspective => |*p| {
+            .prespective => |*p| {
                 p.h = h;
                 p.w = w;
             },
@@ -170,7 +171,7 @@ pub fn init(
         .aspect = @as(f32, @floatFromInt(viewport_size.width)) / @as(f32, @floatFromInt(viewport_size.height)),
         .sensitivity = 0.1,
         .view_matrix = zmath.lookAtRh(uph.Utils.Vec3.vec3toVec4(position), uph.Utils.Vec3.vec3toVec4(position + target), uph.Utils.Vec3.vec3toVec4(up)),
-        .projection = Projection.create(camera_type, @floatFromInt(viewport_size.width), @floatFromInt(viewport_size.height), near, far, fov),
+        .projection = Projection.create(camera_type, viewport_size.width, viewport_size.height, near, far, fov),
     };
 
     // Initialize based on target position
@@ -260,12 +261,6 @@ pub fn move(camera: *Camera, direction: Types.Vec3_f32, dt: f32) void {
     camera.position = camera.position + (camera.current_velocity * zmath.splat(Types.Vec3_f32, dt));
 
     update(camera);
-}
-
-pub inline fn updateResize(camera: *Camera, w: u32, h: u32) void {
-    camera.aspect = @as(f32, @floatFromInt(w)) / @as(f32, @floatFromInt(h));
-    // Update view matrix
-    updateEuler(camera);
 }
 
 // roation system

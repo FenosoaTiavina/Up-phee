@@ -162,7 +162,7 @@ pub fn event(ctx: uph.Context.Context, e: uph.Input.Event) !void {
 
     if (e == .window and e.window.type == .resized) {
         log.debug("Resized", .{});
-        uph.uph_3d.Camera.updateResize(cam_data, e.window.type.resized.width, e.window.type.resized.height);
+        cam_data.projection.update(e.window.type.resized.width, e.window.type.resized.height);
     }
     if (e == .key_down) {
         if (uph.Input.input_manager.isKeyDown(.w) or

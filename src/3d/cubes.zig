@@ -33,18 +33,24 @@ const cube_verts = [_]Objects.Vertex{
     },
 };
 const cube_indices = [_]Objects.Index{
-    //Front
-    1, 0, 2,
-    1, 2, 3,
+    //Top
+    6, 7, 3,
+    3, 2, 6,
+    //Bottom
+    1, 5, 4,
+    4, 0, 1,
+    //Right
+    2, 0, 4,
+    4, 6, 2,
+    //Left
+    5, 1, 3,
+    3, 7, 5,
     //Back
     6, 4, 5,
     5, 7, 6,
-    //Top
-    6, 7, 3,
-    3, 6, 2,
-    //Bottom
-    4, 5, 1,
-    1, 4, 0,
+    //Front
+    1, 0, 2,
+    1, 2, 3,
 };
 
 pub const Cube = struct {
