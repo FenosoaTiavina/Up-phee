@@ -55,7 +55,7 @@ pub const Projection = struct {
                             .h = h,
                             .near = near,
                             .far = far,
-                            .fov = if (fov != null and fov.? > MIN_FOV) std.math.degreesToRadians(fov.?) else std.math.degreesToRadians(70),
+                            .fov = if (fov != null) std.math.degreesToRadians(fov.?) else std.math.degreesToRadians(70),
                         },
                     },
                 };
@@ -165,8 +165,8 @@ pub fn init(
         .pitch = 0.0,
         .roll = 0.0,
         .max_speed = 100.0,
-        .acceleration = 100, // Units per second^2
-        .deceleration = 80.0, // Faster deceleration for responsive stops
+        .acceleration = 70, // Units per second^2
+        .deceleration = 100.0, // Faster deceleration for responsive stops
         .current_velocity = uph.Types.Vec3_f32{ 0.0, 0.0, 0.0 },
         .aspect = @as(f32, @floatFromInt(viewport_size.width)) / @as(f32, @floatFromInt(viewport_size.height)),
         .sensitivity = 0.1,

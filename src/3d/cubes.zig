@@ -54,7 +54,8 @@ const cube_indices = [_]Objects.Index{
 };
 
 pub const Cube = struct {
-    object: *Objects.ObjectManager,
+    object: *Objects.ObjectInstanceManager,
+    // object: *Objects.ObjectManager,
     ctx: uph.Context.Context,
     mesh: Objects.Mesh,
 
@@ -62,7 +63,8 @@ pub const Cube = struct {
         const _cube = try ctx.allocator().create(Cube);
         _cube.*.ctx = ctx;
         _cube.*.mesh = Objects.createMesh(&cube_verts, &cube_indices);
-        _cube.*.object = try Objects.ObjectManager.init(ctx, pipeline, camera, @intCast(cube_verts.len * max_cube_objects), @intCast(cube_indices.len * max_cube_objects));
+        // _cube.*.object = try Objects.ObjectManager.init(ctx, pipeline, camera, @intCast(cube_verts.len * max_cube_objects), @intCast(cube_indices.len * max_cube_objects));
+        _cube.*.object = try Objects.ObjectInstanceManager.init(ctx, _cube.mesh, max_cube_objects, pipeline, camera);
         return _cube;
     }
 
@@ -70,10 +72,18 @@ pub const Cube = struct {
         try self.object.beginDraw();
     }
 
+    // pub fn draw(
+    //     self: *Cube,
+    // ) !void {
+    //     try self.object.draw(self.mesh);
+    // }
+
     pub fn draw(
         self: *Cube,
+        trs: Transform.Transform,
+        color: Types.Vec4_f32,
     ) !void {
-        try self.object.draw(self.mesh);
+        try self.object.draw(trs.model_matrix, color);
     }
 
     pub fn endDraw(self: *Cube) !void {

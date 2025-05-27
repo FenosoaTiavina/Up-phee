@@ -68,7 +68,7 @@ pub const ObjectInstanceManager = struct {
 
     mesh: Mesh,
     gpu_buffer: MeshGPU,
-    object_SSBO_buffer: *c.sdl.SDL_GPUBuffer,
+    // object_SSBO_buffer: *c.sdl.SDL_GPUBuffer,
 
     max_object_number: u32,
     objects_count: u32 = 0,
@@ -99,11 +99,12 @@ pub const ObjectInstanceManager = struct {
         obj_man.*.gpu_buffer = createMeshGPU(ctx.renderer().device, @intCast(mesh.vertices.len), @intCast(mesh.indices.len));
 
         // Create SSBO buffer for object data
-        obj_man.*.object_SSBO_buffer = uph.Buffer.createBuffer(
-            ctx.renderer().device,
-            c.sdl.SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ,
-            @intCast(@sizeOf(ObjectSSBO) * max_objects_number),
-        ).?;
+        // obj_man.*.object_SSBO_buffer = uph.Buffer.createBuffer(
+        //     ctx.renderer().device,
+        //     c.sdl.SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ,
+        //     @intCast(@sizeOf(ObjectSSBO) * max_objects_number),
+        // ).?;
+
         obj_man.*.max_object_number = max_objects_number;
         obj_man.*.objects_count = 0;
         obj_man.*.camera = camera;
@@ -158,7 +159,7 @@ pub const ObjectInstanceManager = struct {
     pub fn deinit(self: *ObjectInstanceManager) void {
         // Release all buffers
         releaseMeshGPU(self.ctx.renderer().device, &self.gpu_buffer);
-        c.sdl.SDL_ReleaseGPUBuffer(self.ctx.renderer().device, self.object_SSBO_buffer);
+        // c.sdl.SDL_ReleaseGPUBuffer(self.ctx.renderer().device, self.object_SSBO_buffer);
 
         self.object_data_batch.deinit();
         self.ctx.allocator().destroy(self);
@@ -196,32 +197,32 @@ pub const ObjectInstanceManager = struct {
         if (self.objects_count == 0) return;
 
         // Upload batched object data to SSBO
-        {
-            const upload_cmd = try self.ctx.renderer().createRogueCommand();
-
-            const copypass = c.sdl.SDL_BeginGPUCopyPass(upload_cmd.command_buffer) orelse {
-                return error.CopypassFailed;
-            };
-
-            const transferbuffer = try self.ctx.renderer().createTransferBuffer(
-                c.sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-                @intCast(@sizeOf(ObjectSSBO) * self.objects_count),
-            );
-            defer c.sdl.SDL_ReleaseGPUTransferBuffer(self.ctx.renderer().device, transferbuffer);
-
-            try uph.Buffer.uploadToGPU(
-                self.ctx.renderer().device,
-                copypass,
-                transferbuffer,
-                0,
-                ObjectSSBO,
-                self.object_data_batch.items,
-                self.object_SSBO_buffer,
-            );
-            c.sdl.SDL_EndGPUCopyPass(copypass);
-
-            try self.ctx.renderer().submitRogueCommand(upload_cmd);
-        }
+        // {
+        //     const upload_cmd = try self.ctx.renderer().createRogueCommand();
+        //
+        //     const copypass = c.sdl.SDL_BeginGPUCopyPass(upload_cmd.command_buffer) orelse {
+        //         return error.CopypassFailed;
+        //     };
+        //
+        //     const transferbuffer = try self.ctx.renderer().createTransferBuffer(
+        //         c.sdl.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        //         @intCast(@sizeOf(ObjectSSBO) * self.objects_count),
+        //     );
+        //     defer c.sdl.SDL_ReleaseGPUTransferBuffer(self.ctx.renderer().device, transferbuffer);
+        //
+        //     try uph.Buffer.uploadToGPU(
+        //         self.ctx.renderer().device,
+        //         copypass,
+        //         transferbuffer,
+        //         0,
+        //         ObjectSSBO,
+        //         self.object_data_batch.items,
+        //         self.object_SSBO_buffer,
+        //     );
+        //     c.sdl.SDL_EndGPUCopyPass(copypass);
+        //
+        //     try self.ctx.renderer().submitRogueCommand(upload_cmd);
+        // }
 
         // Upload ViewProj data to uniform buffer
         {
@@ -255,21 +256,21 @@ pub const ObjectInstanceManager = struct {
             try self.ctx.renderer().bindGraphicsPipeline(self.renderpass, self.pipeline);
         }
 
-        // Bind vertex and index buffers
-        c.sdl.SDL_BindGPUVertexBuffers(
-            self.renderpass,
-            0,
-            &c.sdl.struct_SDL_GPUBufferBinding{ .buffer = self.gpu_buffer.vbo, .offset = 0 },
-            1,
-        );
-        c.sdl.SDL_BindGPUIndexBuffer(
-            self.renderpass,
-            &c.sdl.struct_SDL_GPUBufferBinding{ .buffer = self.gpu_buffer.ibo, .offset = 0 },
-            c.sdl.SDL_GPU_INDEXELEMENTSIZE_16BIT,
-        );
+        { // Bind vertex and index buffers
+            c.sdl.SDL_BindGPUVertexBuffers(
+                self.renderpass,
+                0,
+                &c.sdl.struct_SDL_GPUBufferBinding{ .buffer = self.gpu_buffer.vbo, .offset = 0 },
+                1,
+            );
+            c.sdl.SDL_BindGPUIndexBuffer(
+                self.renderpass,
+                &c.sdl.struct_SDL_GPUBufferBinding{ .buffer = self.gpu_buffer.ibo, .offset = 0 },
+                c.sdl.SDL_GPU_INDEXELEMENTSIZE_16BIT,
+            );
+        }
 
         // Bind ViewProj uniform buffer (set 0, binding 0)
-        // c.sdl.SDL_PushGPUVertexUniformData(command_buffer, 0, &ubo, @sizeOf(components.render.UniformBufferObject));
         const view_projection = ViewProj{
             .view = self.camera.view_matrix,
             .projection = self.camera.projection.getProjection(),
@@ -277,7 +278,7 @@ pub const ObjectInstanceManager = struct {
         c.sdl.SDL_PushGPUVertexUniformData(self.draw_cmd.command_buffer, 0, &view_projection, @intCast(@sizeOf(ViewProj)));
 
         // Bind SSBO storage buffer (set 1, binding 0)
-        c.sdl.SDL_BindGPUVertexStorageBuffers(self.renderpass, 0, &[_]*c.sdl.SDL_GPUBuffer{self.object_SSBO_buffer}, 1);
+        // c.sdl.SDL_BindGPUVertexStorageBuffers(self.renderpass, 0, &[_]*c.sdl.SDL_GPUBuffer{self.object_SSBO_buffer}, 1);
 
         // Draw instanced
         c.sdl.SDL_DrawGPUIndexedPrimitives(self.renderpass, @intCast(self.mesh.indices.len), self.objects_count, 0, 0, 0);
@@ -286,6 +287,9 @@ pub const ObjectInstanceManager = struct {
         c.sdl.SDL_EndGPURenderPass(self.renderpass);
 
         try self.ctx.renderer().submitCommand(self.draw_cmd_handle);
+
+        self.object_data_batch.clearRetainingCapacity();
+        self.objects_count = 0;
     }
 };
 

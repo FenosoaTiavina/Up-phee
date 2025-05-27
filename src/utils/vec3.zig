@@ -73,3 +73,14 @@ pub inline fn crossVec3(v0: uph.Types.Vec3_f32, v1: uph.Types.Vec3_f32) uph.Type
 pub inline fn vec3toVec4(v: uph.Types.Vec3_f32) uph.Types.Vec4_f32 {
     return uph.zmath.f32x4(v[0], v[1], v[2], 1.0);
 }
+
+pub fn mulVec3Mat4(vertex: uph.Types.Vec3_f32, transform: uph.Types.Mat4_f32) uph.Types.Vec3_f32 {
+    // Convert 3D vector to 4D homogeneous coordinates
+    const vec4_D = uph.zmath.f32x4(vertex[0], vertex[1], vertex[2], 1.0);
+
+    // Apply transformation
+    const vec_mult = uph.zmath.mul(vec4_D, transform);
+
+    // Convert back to 3D vector
+    return uph.Types.Vec3_f32{ vec_mult[0], vec_mult[1], vec_mult[2] };
+}
