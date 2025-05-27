@@ -103,10 +103,10 @@ pub fn init(ctx: uph.Context.Context) !void {
     const g_id1 = try uph.Pipeline.createGraphicsPipeline(ctx.renderer(), .{
         .vertex_shader = try uph.Shader.loadShader(
             ctx.renderer().device,
-            "assets/shaders/compiled/instanced.vert.spv",
+            "assets/shaders/compiled/PositionColor.vert.spv",
             uph.clib.sdl.SDL_GPU_SHADERSTAGE_VERTEX,
             1, // num_uniform_buffers (ViewProj + any others)
-            1, // num_storage_buffers (ObjectBuffer SSBO)
+            0, // num_storage_buffers (ObjectBuffer SSBO)
             0, // num_storage_textures
             0, // num_samplers (set this based on your shader's needs)
         ),
@@ -188,22 +188,8 @@ pub fn update(ctx: uph.Context.Context) !void {
 pub fn draw(ctx: uph.Context.Context) !void {
     _ = &ctx; // autofix
     try cube_manager.beginDraw();
-    var t = uph.uph_3d.Transform.init();
-    _ = t
-        .setPosition(uph.Types.Vec3_f32{
-        0,
-        0,
-        5,
-    })
-    //     .setRotation(
-    //     uph.Types.Vec3_f32{
-    //         std.math.degreesToRadians(@as(f32, @floatFromInt(45 * i))),
-    //         std.math.degreesToRadians(@as(f32, @floatFromInt(21 * i))),
-    //         std.math.degreesToRadians(@as(f32, @floatFromInt(20 * i))),
-    //     },
-    // )
-    ;
-    try cube_manager.draw(t, .{ 0.1, 0.7, 0.5, 1.0 });
+
+    try cube_manager.draw();
 
     try cube_manager.endDraw();
     // Debug: Print batch content information before drawing

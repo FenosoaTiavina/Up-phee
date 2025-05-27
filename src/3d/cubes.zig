@@ -7,70 +7,48 @@ const Transform = uph.uph_3d.Transform;
 const Types = uph.Types;
 
 const cube_verts = [_]Objects.Vertex{
-    .{
-        // f-tl
-        .position = .{ -0.5, 0.5, 0.5 },
-        // .uv = .{ 0, 0 },
-    },
-    .{
-        // f-tr
-        .position = .{ 0.5, 0.5, 0.5 },
-        // .uv = .{ 0, 1 },
-    },
-    .{
-        // f-bl
-        .position = .{ -0.5, -0.5, 0.5 },
-        // .uv = .{ 1, 0 },
-    },
-    .{
-        // f-br
-        .position = .{ 0.5, -0.5, 0.5 },
-        // .uv = .{ 1, 1 },
-    },
-    .{
-        // b-tl
-        .position = .{ -0.5, 0.5, -0.5 },
-        // .uv = .{ 1, 1 },
-    },
-    .{
-        // b-tr
-        .position = .{ 0.5, 0.5, -0.5 },
-        // .uv = .{ 0, 1 },
-    },
-    .{
-        // b-bl
+    .{ // f-bl
         .position = .{ -0.5, -0.5, -0.5 },
-        // .uv = .{ 1, 0 },
     },
-    .{
-        // b-br
+    .{ // f-br
         .position = .{ 0.5, -0.5, -0.5 },
-        // .uv = .{ 0, 0 },
+    },
+    .{ // f-tl
+        .position = .{ -0.5, 0.5, -0.5 },
+    },
+    .{ // f-tr
+        .position = .{ 0.5, 0.5, -0.5 },
+    },
+    .{ // b-bl
+        .position = .{ -0.5, -0.5, 0.5 },
+    },
+    .{ // b-br
+        .position = .{ 0.5, -0.5, 0.5 },
+    },
+    .{ // b-tl
+        .position = .{ -0.5, 0.5, 0.5 },
+    },
+    .{ // b-tr
+        .position = .{ 0.5, 0.5, 0.5 },
     },
 };
 const cube_indices = [_]Objects.Index{
-    //Top
-    2, 6, 7,
-    2, 3, 7,
-    //Bottom
-    0, 4, 5,
-    0, 1, 5,
-    //Left
-    0, 2, 6,
-    0, 4, 6,
-    //Right
-    1, 3, 7,
-    1, 5, 7,
     //Front
-    0, 2, 3,
-    0, 1, 3,
+    1, 0, 2,
+    1, 2, 3,
     //Back
-    4, 6, 7,
-    4, 5, 7,
+    6, 4, 5,
+    5, 7, 6,
+    //Top
+    6, 7, 3,
+    3, 6, 2,
+    //Bottom
+    4, 5, 1,
+    1, 4, 0,
 };
 
 pub const Cube = struct {
-    object: *Objects.ObjectInstanceManager,
+    object: *Objects.ObjectManager,
     ctx: uph.Context.Context,
     mesh: Objects.Mesh,
 
@@ -78,7 +56,7 @@ pub const Cube = struct {
         const _cube = try ctx.allocator().create(Cube);
         _cube.*.ctx = ctx;
         _cube.*.mesh = Objects.createMesh(&cube_verts, &cube_indices);
-        _cube.*.object = try Objects.ObjectInstanceManager.init(ctx, _cube.*.mesh, max_cube_objects, pipeline, camera);
+        _cube.*.object = try Objects.ObjectManager.init(ctx, pipeline, camera, @intCast(cube_verts.len * max_cube_objects), @intCast(cube_indices.len * max_cube_objects));
         return _cube;
     }
 
@@ -88,13 +66,8 @@ pub const Cube = struct {
 
     pub fn draw(
         self: *Cube,
-        transform: Transform.Transform,
-        color: Types.Vec4_f32,
     ) !void {
-        _ = &transform; // autofix
-        _ = &color; // autofix
-
-        try self.object.draw(transform.model_matrix, color);
+        try self.object.draw(self.mesh);
     }
 
     pub fn endDraw(self: *Cube) !void {
