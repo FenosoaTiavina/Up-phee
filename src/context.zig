@@ -166,15 +166,16 @@ pub fn uphContext(comptime cfg: config.Config) type {
 
             // Init plugin system
             if (bos.link_dynamic) {
-                self._plugin_system = try PluginSystem.create(self._allocator);
+                self._plugin_system = try PluginSystem.create(self.context());
             }
 
             // Misc.
             return self;
         }
 
-        pub fn ctx_config(self: *@This(), _cfg: uph.Config.Config) void {
+        pub fn ctx_config(self: *@This(), _cfg: uph.Config.Config) !void {
             self._cfg = _cfg;
+            try PluginSystem.config(self.context());
         }
 
         pub fn destroy(self: *@This()) void {

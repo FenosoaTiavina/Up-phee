@@ -44,20 +44,26 @@ pub const Plugin = struct {
     reload_memory_fn: ReloadMemoryFn,
 };
 
-const plugin_path = "./loaded_plugins";
+const plugin_path = "loaded_plugins";
 
 allocator: std.mem.Allocator,
 plugins: std.StringArrayHashMap(Plugin),
 
-pub fn create(allocator: std.mem.Allocator) !*Self {
-    try std.fs.cwd().deleteTree(plugin_path);
-    try std.fs.cwd().makeDir(plugin_path);
-    const ps = try allocator.create(Self);
+pub fn create(ctx: uph.Context.Context) !*Self {
+    const ps = try ctx.allocator().create(Self);
     ps.* = .{
-        .allocator = allocator,
-        .plugins = std.StringArrayHashMap(Plugin).init(allocator),
+        .allocator = ctx.allocator(),
+        .plugins = std.StringArrayHashMap(Plugin).init(ctx.allocator()),
     };
     return ps;
+}
+
+pub fn config(ctx: uph.Context.Context) !void {
+    const abs_path = try std.fmt.allocPrint(ctx.allocator(), "{s}/{s}", .{ ctx.cfg().uph_exe_dir, plugin_path });
+    defer ctx.allocator().free(abs_path);
+
+    try std.fs.cwd().deleteTree(abs_path);
+    try std.fs.cwd().makeDir(abs_path);
 }
 
 pub fn destroy(self: *Self, ctx: uph.Context.Context) void {
@@ -76,7 +82,10 @@ pub fn destroy(self: *Self, ctx: uph.Context.Context) void {
 pub fn register(self: *Self, ctx: uph.Context.Context, name: []const u8, path: []const u8, hot_reload: bool) !void {
     if (self.plugins.contains(name)) return error.NameCollision;
 
-    var loaded = try self.loadLibrary(path, 1);
+    const abs_path = try std.fmt.allocPrint(ctx.allocator(), "{s}/{s}", .{ ctx.cfg().uph_exe_dir, path });
+    defer ctx.allocator().free(abs_path);
+
+    var loaded = try self.loadLibrary(abs_path, 1);
     errdefer loaded.lib.close();
     const pname = try self.allocator.dupeZ(u8, name);
     errdefer self.allocator.free(pname);
@@ -88,7 +97,7 @@ pub fn register(self: *Self, ctx: uph.Context.Context, name: []const u8, path: [
     try self.plugins.put(try self.allocator.dupe(u8, name), .{
         .lib = loaded.lib,
         .name = pname,
-        .origin_path = try self.allocator.dupe(u8, path),
+        .origin_path = try self.allocator.dupe(u8, abs_path),
         .last_modify_time = loaded.last_modify_time,
         .version = 1,
         .hot_reloading = hot_reload,

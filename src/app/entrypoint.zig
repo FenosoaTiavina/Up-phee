@@ -21,7 +21,7 @@ pub fn main() !void {
 
     const ctx = uph_ctx.context();
 
-    uph_ctx.ctx_config(try game.config(ctx));
+    try uph_ctx.ctx_config(try game.config(ctx));
 
     log.debug("CFG.exe_dir : {s}", .{uph_ctx._cfg.uph_exe_dir});
 

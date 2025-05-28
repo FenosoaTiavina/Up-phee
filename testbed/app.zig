@@ -85,7 +85,7 @@ pub fn init(ctx: uph.Context.Context) !void {
 
     const g_id1 = try uph.Pipeline.createGraphicsPipeline(ctx.renderer(), .{
         .vertex_shader = try uph.Shader.loadShader(
-            ctx.renderer().device,
+            ctx,
             "assets/shaders/compiled/Instanced.vert.spv",
             uph.clib.sdl.SDL_GPU_SHADERSTAGE_VERTEX,
             1, // num_uniform_buffers (ViewProj + any others)
@@ -94,7 +94,7 @@ pub fn init(ctx: uph.Context.Context) !void {
             0, // num_samplers (set this based on your shader's needs)
         ),
         .fragment_shader = try uph.Shader.loadShader(
-            ctx.renderer().device,
+            ctx,
             "assets/shaders/compiled/SolidColor.frag.spv",
             uph.clib.sdl.SDL_GPU_SHADERSTAGE_FRAGMENT,
             0,
@@ -169,7 +169,7 @@ pub fn event(ctx: uph.Context.Context, e: uph.Input.Event) !void {
 pub fn update(ctx: uph.Context.Context) !void {
     _ = &ctx; // autofix
     rotation += 25 * ctx.deltaTime();
-    rotation = uph.zmath.clamp(rotation, 0, 306);
+    rotation = if (rotation > 360) 0 else rotation;
 }
 
 pub fn draw(ctx: uph.Context.Context) !void {
