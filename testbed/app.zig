@@ -216,11 +216,11 @@ pub fn draw(ctx: uph.Context.Context) !void {
 
     for (0..9) |i| {
         var t = uph.uph_3d.Transform.Transform.init();
-        _ = t.translate(@floatFromInt(i), 0, 0).rotate(0, @floatFromInt(i), 0);
+        _ = t.translate(0, 0, 0).rotate(0, 0, 0);
         const col = uph.Types.Vec4_f32{
-            @floatFromInt(rand.intRangeAtMost(u64, 0, i)),
-            @floatFromInt(rand.intRangeAtMost(u64, 0, i)),
-            @floatFromInt(rand.intRangeAtMost(u64, 0, i)),
+            if (i + 1 % 2 == 0) 0.2 else 0.8,
+            if (i + 1 % 2 == 0) 0.3 else 0.5,
+            if (i + 1 % 2 == 0) 0.1 else 0.7,
             1.0,
         };
         try cube_manager.draw(t, col);
