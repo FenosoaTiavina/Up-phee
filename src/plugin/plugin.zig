@@ -111,8 +111,8 @@ pub fn register(self: *Self, ctx: uph.Context.Context, name: []const u8, path: [
     });
 
     log.info(
-        "Successfully loaded library {s}, version {d}",
-        .{ path, 1 },
+        "Successfully loaded library {s}, version {d} \n Path: {s}",
+        .{ path, 1, abs_path },
     );
 }
 
