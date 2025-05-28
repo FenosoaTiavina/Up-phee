@@ -10,7 +10,7 @@ layout(location=0) in vec3 position;
 layout(location=0) out vec4 out_color;
 
 void main() {
-	gl_Position = projection * view * vec4(position.x + gl_InstanceIndex ,
+	gl_Position = projection * view * vec4(position.x + (gl_InstanceIndex * 2) ,
                                         position.y , position.z, 1.0);
 	out_color = vec4( position.r,position.g ,gl_InstanceIndex , 1.0);
 }

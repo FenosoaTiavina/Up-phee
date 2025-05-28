@@ -1,6 +1,13 @@
 const uph = @import("../uph.zig");
 const std = @import("std");
 
+pub fn f32x3(e0: f32, e1: f32, e2: f32) uph.Types.Vec3_f32 {
+    return uph.Types.Vec3_f32{ e0, e1, e2 };
+}
+pub fn f32x3s(val: f32) uph.Types.Vec3_f32 {
+    return f32x3(val, val, val);
+}
+
 pub inline fn vecMagnetude(vec: anytype) f32 {
     var sqrsum: f32 = 0;
     const T = @TypeOf(vec);
@@ -72,6 +79,13 @@ pub inline fn crossVec3(v0: uph.Types.Vec3_f32, v1: uph.Types.Vec3_f32) uph.Type
 
 pub inline fn vec3toVec4(v: uph.Types.Vec3_f32) uph.Types.Vec4_f32 {
     return uph.zmath.f32x4(v[0], v[1], v[2], 1.0);
+}
+pub inline fn vec3toVec4Zero(v: uph.Types.Vec3_f32) uph.Types.Vec4_f32 {
+    return uph.zmath.f32x4(v[0], v[1], v[2], 0.0);
+}
+
+pub inline fn vec4toVec3(v: uph.Types.Vec4_f32) uph.Types.Vec3_f32 {
+    return uph.Types.Vec3_f32{ v[0], v[1], v[2] };
 }
 
 pub fn mulVec3Mat4(vertex: uph.Types.Vec3_f32, transform: uph.Types.Mat4_f32) uph.Types.Vec3_f32 {

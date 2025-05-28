@@ -27,6 +27,17 @@ pub fn createGraphicsPipeline(renderer: *uph.Renderer, desc: GraphicsPipelineDes
             },
         },
         .primitive_type = desc.primitive_type,
+        .depth_stencil_state = .{
+            .back_stencil_state = .{
+                .compare_op = c.sdl.SDL_GPU_COMPAREOP_EQUAL,
+                .depth_fail_op = c.sdl.SDL_GPU_COMPAREOP_NOT_EQUAL,
+                .fail_op = c.sdl.SDL_GPU_COMPAREOP_NOT_EQUAL,
+                .pass_op = c.sdl.SDL_GPU_COMPAREOP_GREATER_OR_EQUAL,
+            },
+            .compare_op = c.sdl.SDL_GPU_COMPAREOP_EQUAL,
+            .enable_depth_write = true,
+            .enable_depth_test = true,
+        },
         .rasterizer_state = .{
             .cull_mode = desc.cull_mode,
             .front_face = desc.front_face,

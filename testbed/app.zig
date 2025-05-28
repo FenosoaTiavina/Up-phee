@@ -15,52 +15,32 @@ var cube_manager: *uph.uph_3d.Cubes.Cube = undefined;
 
 var rand: std.Random = undefined;
 
-pub fn cam_move(cam: *uph.uph_3d.Camera.Camera, e: uph.Input.Event, delta_time: f32) void {
-    _ = &e; // autofix
-    // Initialize movement vector
-    var movement = uph.Types.Vec3_f32{ 0.0, 0.0, 0.0 };
-
-    // Check WASD keys for movement
-    if (uph.Input.input_manager.isKeyDown(.w)) {
-        movement[2] += 1.0; // Forward is positive Z in camera space
-    } else if (uph.Input.input_manager.isKeyDown(.s)) {
-        movement[2] -= 1.0; // Backward is negative Z in camera space
-    }
-    if (uph.Input.input_manager.isKeyDown(.a)) {
-        movement[0] -= 1.0; // Left is negative X in camera space
-    } else if (uph.Input.input_manager.isKeyDown(.d)) {
-        movement[0] += 1.0; // Right is positive X in camera space
+pub fn cam_input(cam: *uph.uph_3d.Camera.Camera, e: uph.Input.Event, delta_time: f32) void {
+    if (e == .mouse_motion) {
+        if (e.mouse_motion.relative) {
+            uph.uph_3d.Camera.rotate(cam, e.mouse_motion.delta.x, e.mouse_motion.delta.y, delta_time);
+        }
     }
 
-    // Normalize movement vector if needed (for diagonal movement)
-    const length_squared = movement[0] * movement[0] +
-        movement[1] * movement[1] +
-        movement[2] * movement[2];
+    if (e == .key_down) {
+        var movement = uph.Types.Vec3_f32{ 0.0, 0.0, 0.0 };
 
-    if (length_squared > 0.001) { // Only normalize if there's actual movement
-        if (length_squared > 1.001) { // Only normalize if length is not already ~1
-            const length = @sqrt(length_squared);
-            movement[0] /= length;
-            movement[1] /= length;
-            movement[2] /= length;
+        // Check WASD keys for movement
+        if (uph.Input.input_manager.isKeyDown(.w)) {
+            movement[2] += 1.0; // Forward is positive Z in camera space
+        } else if (uph.Input.input_manager.isKeyDown(.s)) {
+            movement[2] -= 1.0; // Backward is negative Z in camera space
+        }
+        if (uph.Input.input_manager.isKeyDown(.a)) {
+            movement[0] += 1.0;
+        } else if (uph.Input.input_manager.isKeyDown(.d)) {
+            movement[0] -= 1.0;
         }
 
-        // We don't need to scale movement by delta_time here, as our refactored
-        // Camera.move function already handles time-based movement with acceleration
-
-        // Apply movement to camera - let the camera handle acceleration
-        uph.uph_3d.Camera.move(cam, movement, delta_time);
-    } else {
-        // Still call move with zero movement to allow deceleration
         uph.uph_3d.Camera.move(cam, movement, delta_time);
     }
-}
 
-pub fn cam_rotate(cam: *uph.uph_3d.Camera.Camera, e: uph.Input.Event, delta_time: f32) void {
-    _ = &delta_time; // autofix
-    if (e.mouse_motion.relative) {
-        uph.uph_3d.Camera.rotate(cam, e.mouse_motion.delta.x, e.mouse_motion.delta.y, 0, true);
-    }
+    uph.uph_3d.Camera.update(cam, delta_time);
 }
 
 pub fn config(ctx: uph.Context.Context) !uph.Config.Config {
@@ -97,10 +77,9 @@ pub fn init(ctx: uph.Context.Context) !void {
     registry.add(
         camera_entity,
         uph.uph_3d.Camera.init(
-            .{ 0, 0, -3 },
-            .{ 0, 0, 0 },
-            ctx.renderer().window.window_dimension,
             .prespective,
+            ctx.renderer().window.window_dimension.width,
+            ctx.renderer().window.window_dimension.height,
             0.001,
             1_000,
             70,
@@ -188,7 +167,7 @@ pub fn init(ctx: uph.Context.Context) !void {
             },
             .num_vertex_attributes = 1,
         },
-        .cull_mode = uph.clib.sdl.SDL_GPU_CULLMODE_BACK,
+        .cull_mode = uph.clib.sdl.SDL_GPU_CULLMODE_FRONT,
         .front_face = uph.clib.sdl.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
         .primitive_type = uph.clib.sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .wireframe = false,
@@ -218,21 +197,13 @@ pub fn event(ctx: uph.Context.Context, e: uph.Input.Event) !void {
     if (e == .window and e.window.type == .resized) {
         cam_data.projection.update(e.window.type.resized.width, e.window.type.resized.height);
     }
+
     if (e == .key_down) {
-        if (uph.Input.input_manager.isKeyDown(.w) or
-            uph.Input.input_manager.isKeyDown(.s) or
-            uph.Input.input_manager.isKeyDown(.a) or
-            uph.Input.input_manager.isKeyDown(.d))
-        {
-            cam_move(cam_data, e, ctx.deltaTime());
-        }
         if (e.key_down.keycode == .g) {
             _ = uph.clib.sdl.SDL_SetWindowRelativeMouseMode(ctx.window().sdl_window, !e.key_down.relative);
         }
     }
-    if (e == .mouse_motion) {
-        cam_rotate(cam_data, e, ctx.deltaTime());
-    }
+    cam_input(cam_data, e, ctx.deltaTime());
 }
 
 pub fn update(ctx: uph.Context.Context) !void {

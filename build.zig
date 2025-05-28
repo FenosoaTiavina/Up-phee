@@ -141,7 +141,6 @@ pub fn getLibrary(
 
     const zmath = b.dependency("zmath", .{
         .target = target,
-        .optimize = optimize,
     });
     uph_mod.addImport("zmath", zmath.module("root"));
 
