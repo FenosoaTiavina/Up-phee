@@ -82,6 +82,8 @@ clear_color: Types.Vec4_f32 = .{
 },
 
 target_info: c.sdl.SDL_GPUColorTargetInfo = undefined,
+depth_target_info: ?c.sdl.SDL_GPUDepthStencilTargetInfo = null,
+
 swapchain_texture: ?*c.sdl.SDL_GPUTexture = null,
 
 pub fn init(allocator: std.mem.Allocator, width: u32, height: u32, title: [*:0]const u8) !*Renderer {
@@ -256,6 +258,15 @@ pub fn setClearColor(self: *Renderer, color: Types.Vec4_f32) void {
     self.clear_color = color;
 }
 
+pub fn setDepthStencil(self: *Renderer, texture: *c.sdl.SDL_GPUTexture) void {
+    self.depth_target_info = .{
+        .texture = texture,
+        .load_op = c.sdl.SDL_GPU_LOADOP_CLEAR,
+        .clear_depth = 1.0,
+        .store_op = c.sdl.SDL_GPU_STOREOP_DONT_CARE,
+    };
+}
+
 pub fn createTransferBuffer(
     self: *Renderer,
     usage: c.sdl.SDL_GPUTransferBufferUsage,
@@ -265,6 +276,36 @@ pub fn createTransferBuffer(
         .usage = usage,
         .size = size,
     }) orelse return error.TransferBufferCreationFailed;
+}
+
+pub fn beginRenderpass(self: Renderer, cmd: *Cmd) !*c.sdl.SDL_GPURenderPass {
+    if (self.depth_target_info == null) {
+        return c.sdl.SDL_BeginGPURenderPass(
+            cmd.command_buffer,
+            &self.target_info,
+            1,
+            null,
+        ) orelse {
+            return error.RenderpassFailed;
+        };
+    } else {
+        return c.sdl.SDL_BeginGPURenderPass(
+            cmd.command_buffer,
+            &self.target_info,
+            1,
+            &self.depth_target_info.?,
+        ) orelse {
+            return error.RenderpassFailed;
+        };
+    }
+}
+
+pub fn endRenderpass(
+    self: Renderer,
+    renderpass: *c.sdl.SDL_GPURenderPass,
+) void {
+    _ = self; // autofix
+    c.sdl.SDL_EndGPURenderPass(renderpass);
 }
 
 pub fn beginFrame(self: *Renderer) !void {

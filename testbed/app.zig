@@ -15,6 +15,8 @@ var cube_manager: *uph.uph_3d.Cubes.Cube = undefined;
 
 var rand: std.Random = undefined;
 
+var rotation: f32 = 0;
+
 pub fn cam_input(cam: *uph.uph_3d.Camera.Camera, e: uph.Input.Event, delta_time: f32) void {
     if (e == .mouse_motion) {
         if (e.mouse_motion.relative) {
@@ -118,7 +120,9 @@ pub fn init(ctx: uph.Context.Context) !void {
             },
             .num_vertex_attributes = 1,
         },
-        .cull_mode = uph.clib.sdl.SDL_GPU_CULLMODE_FRONT,
+        .width = ctx.window().getSize().width,
+        .height = ctx.window().getSize().height,
+        .cull_mode = uph.clib.sdl.SDL_GPU_CULLMODE_BACK,
         .front_face = uph.clib.sdl.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
         .primitive_type = uph.clib.sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .wireframe = false,
@@ -147,6 +151,11 @@ pub fn event(ctx: uph.Context.Context, e: uph.Input.Event) !void {
 
     if (e == .window and e.window.type == .resized) {
         cam_data.projection.update(e.window.type.resized.width, e.window.type.resized.height);
+        try uph.Pipeline.recreateDepthStencil(
+            ctx.renderer(),
+            e.window.type.resized.width,
+            e.window.type.resized.height,
+        );
     }
 
     if (e == .key_down) {
@@ -159,6 +168,8 @@ pub fn event(ctx: uph.Context.Context, e: uph.Input.Event) !void {
 
 pub fn update(ctx: uph.Context.Context) !void {
     _ = &ctx; // autofix
+    rotation += 25 * ctx.deltaTime();
+    rotation = uph.zmath.clamp(rotation, 0, 306);
 }
 
 pub fn draw(ctx: uph.Context.Context) !void {
@@ -169,7 +180,7 @@ pub fn draw(ctx: uph.Context.Context) !void {
         var trs = uph.uph_3d.Transform.Transform.init();
         _ = trs
             .translate(@as(f32, @floatFromInt(i)) * 1.5, 0.0, 0.0)
-            .rotate(0, @as(f32, @floatFromInt(i)) * 20, 0);
+            .rotate(0, rotation, 0).setScale(.{ 5, 5, 5 });
         const col = uph.Types.Vec4_f32{
             if (i < 3) 1 else 0,
             if (i >= 3 and i < 6) 1 else 0,

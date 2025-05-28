@@ -47,7 +47,6 @@ pub fn init(
     pipeline: u32,
     camera: *uph_3d.Camera.Camera,
 ) !*ObjectInstanceManager {
-    std.log.debug("size: {d} , align: {d} , {d},{d}", .{ @sizeOf(ObjectSSBO), @alignOf(ObjectSSBO), @sizeOf(Types.Mat4_f32), @sizeOf(Types.Vec4_f32) });
     const obj_man = try ctx.renderer().allocator.create(ObjectInstanceManager);
 
     obj_man.*.ctx = ctx;
@@ -177,8 +176,8 @@ pub fn endDraw(self: *ObjectInstanceManager) !void {
         c.sdl.SDL_EndGPUCopyPass(copypass);
     }
 
-    {
-        // Upload ViewProj data to uniform buffer
+    { // Upload ViewProj data to uniform buffer
+
         const copypass = c.sdl.SDL_BeginGPUCopyPass(self.draw_cmd.command_buffer) orelse {
             return error.CopypassFailed;
         };
@@ -193,9 +192,7 @@ pub fn endDraw(self: *ObjectInstanceManager) !void {
     }
 
     { // Create render pass
-        self.renderpass = c.sdl.SDL_BeginGPURenderPass(self.draw_cmd.command_buffer, &self.ctx.renderer().target_info, 1, null) orelse {
-            return error.RenderpassFailed;
-        };
+        self.renderpass = try self.ctx.renderer().beginRenderpass(self.draw_cmd);
     }
 
     try self.ctx.renderer().bindGraphicsPipeline(self.renderpass, self.pipeline);
@@ -229,8 +226,7 @@ pub fn endDraw(self: *ObjectInstanceManager) !void {
     c.sdl.SDL_DrawGPUIndexedPrimitives(self.renderpass, @intCast(self.mesh.indices.len), self.objects_count, 0, 0, 0);
 
     // End render pass
-    c.sdl.SDL_EndGPURenderPass(self.renderpass);
-
+    self.ctx.renderer().endRenderpass(self.renderpass);
     try self.ctx.renderer().submitCommand(self.draw_cmd_handle);
 
     self.object_data_batch.clearRetainingCapacity();

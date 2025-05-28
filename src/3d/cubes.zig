@@ -8,28 +8,28 @@ const Types = uph.Types;
 
 const cube_verts = [_]Objects.Vertex{
     .{ // f-bl
-        .position = .{ -0.5, -0.5, -0.5 },
+        .position = .{ -0.1, -0.1, -0.1 },
     },
     .{ // f-br
-        .position = .{ 0.5, -0.5, -0.5 },
+        .position = .{ 0.1, -0.1, -0.1 },
     },
     .{ // f-tl
-        .position = .{ -0.5, 0.5, -0.5 },
+        .position = .{ -0.1, 0.1, -0.1 },
     },
     .{ // f-tr
-        .position = .{ 0.5, 0.5, -0.5 },
+        .position = .{ 0.1, 0.1, -0.1 },
     },
     .{ // b-bl
-        .position = .{ -0.5, -0.5, 0.5 },
+        .position = .{ -0.1, -0.1, 0.1 },
     },
     .{ // b-br
-        .position = .{ 0.5, -0.5, 0.5 },
+        .position = .{ 0.1, -0.1, 0.1 },
     },
     .{ // b-tl
-        .position = .{ -0.5, 0.5, 0.5 },
+        .position = .{ -0.1, 0.1, 0.1 },
     },
     .{ // b-tr
-        .position = .{ 0.5, 0.5, 0.5 },
+        .position = .{ 0.1, 0.1, 0.1 },
     },
 };
 const cube_indices = [_]Objects.Index{
