@@ -53,5 +53,5 @@ pub fn createMesh(vertices: []const Vertex, indices: []const u16) Mesh {
     };
 }
 
-pub const ObjectInstanceManager = @import("./render.instanced.zig").ObjectInstanceManager;
+pub const ObjectInstanceManager = @import("./render.instanced.zig");
 pub const ObjectManager = @import("./render.simple.zig").ObjectManager;

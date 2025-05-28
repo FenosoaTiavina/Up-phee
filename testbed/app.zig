@@ -63,12 +63,6 @@ pub fn init(ctx: uph.Context.Context) !void {
 
     std.log.debug("Hello from entry point", .{}); // Fixed typo
 
-    // const _t = uph.Types.Vec3_f32{ 1, 2, 3 };
-    // var trs = uph.uph_3d.Transform.init();
-    // _ = trs.translate(0.5, 0.0, -0.9);
-    //
-    // log.debug("test {any} x {any} :\n=>{any}", .{ _t, trs.model_matrix, uph.Utils.Vec3.mulVec3Mat4(_t, trs.model_matrix) });
-
     registry = ecs.Registry.init(ctx.allocator());
 
     camera_entity = registry.create();
@@ -87,56 +81,13 @@ pub fn init(ctx: uph.Context.Context) !void {
     );
     cam_data = registry.get(uph.uph_3d.Camera.Camera, camera_entity);
 
-    // const g_id1 = try uph.Pipeline.createGraphicsPipeline(ctx.renderer(), .{
-    //     .vertex_shader = try uph.Shader.loadShader(
-    //         ctx.renderer().device,
-    //         "assets/shaders/compiled/PositionColor.vert.spv",
-    //         uph.clib.sdl.SDL_GPU_SHADERSTAGE_VERTEX,
-    //         1, // num_uniform_buffers (ViewProj + any others)
-    //         0, // num_storage_buffers (ObjectBuffer SSBO)
-    //         0, // num_storage_textures
-    //         0, // num_samplers (set this based on your shader's needs)
-    //     ),
-    //     .fragment_shader = try uph.Shader.loadShader(
-    //         ctx.renderer().device,
-    //         "assets/shaders/compiled/SolidColor.frag.spv",
-    //         uph.clib.sdl.SDL_GPU_SHADERSTAGE_FRAGMENT,
-    //         0,
-    //         0,
-    //         0,
-    //         0,
-    //     ),
-    //     .vertex_input_state = .{
-    //         .vertex_buffer_descriptions = &uph.clib.sdl.SDL_GPUVertexBufferDescription{
-    //             .slot = 0,
-    //             .pitch = @sizeOf(uph.uph_3d.Objects.Vertex),
-    //             .input_rate = uph.clib.sdl.SDL_GPU_VERTEXINPUTRATE_VERTEX, // Changed from INSTANCE
-    //             .instance_step_rate = 0,
-    //         },
-    //         .num_vertex_buffers = 1,
-    //         .vertex_attributes = &[_]uph.clib.sdl.SDL_GPUVertexAttribute{
-    //             .{
-    //                 .location = 0,
-    //                 .buffer_slot = 0,
-    //                 .format = uph.clib.sdl.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-    //                 .offset = @offsetOf(uph.uph_3d.Objects.Vertex, "position"),
-    //             },
-    //         },
-    //         .num_vertex_attributes = 1,
-    //     },
-    //     .cull_mode = uph.clib.sdl.SDL_GPU_CULLMODE_FRONT,
-    //     .front_face = uph.clib.sdl.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
-    //     .primitive_type = uph.clib.sdl.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-    //     .wireframe = false,
-    // });
-
     const g_id1 = try uph.Pipeline.createGraphicsPipeline(ctx.renderer(), .{
         .vertex_shader = try uph.Shader.loadShader(
             ctx.renderer().device,
             "assets/shaders/compiled/Instanced.vert.spv",
             uph.clib.sdl.SDL_GPU_SHADERSTAGE_VERTEX,
             1, // num_uniform_buffers (ViewProj + any others)
-            0, // num_storage_buffers (ObjectBuffer SSBO)
+            1, // num_storage_buffers (ObjectBuffer SSBO)
             0, // num_storage_textures
             0, // num_samplers (set this based on your shader's needs)
         ),
@@ -215,20 +166,19 @@ pub fn draw(ctx: uph.Context.Context) !void {
     try cube_manager.beginDraw();
 
     for (0..9) |i| {
-        var t = uph.uph_3d.Transform.Transform.init();
-        _ = t.translate(0, 0, 0).rotate(0, 0, 0);
+        var trs = uph.uph_3d.Transform.Transform.init();
+        _ = trs
+            .translate(@as(f32, @floatFromInt(i)) * 1.5, 0.0, 0.0)
+            .rotate(0, @as(f32, @floatFromInt(i)) * 20, 0);
         const col = uph.Types.Vec4_f32{
-            if (i + 1 % 2 == 0) 0.2 else 0.8,
-            if (i + 1 % 2 == 0) 0.3 else 0.5,
-            if (i + 1 % 2 == 0) 0.1 else 0.7,
+            if (i < 3) 1 else 0,
+            if (i >= 3 and i < 6) 1 else 0,
+            if (i >= 6 and i < 9) 1 else 0,
             1.0,
         };
-        try cube_manager.draw(t, col);
+        try cube_manager.draw(trs, col);
     }
-    // try cube_manager.draw();
-
     try cube_manager.endDraw();
-    // Debug: Print batch content information before drawing
 }
 
 pub fn quit(ctx: uph.Context.Context) void {

@@ -128,7 +128,7 @@ pub const Camera = struct {
     /// Movement speed in units per second
     move_speed: f32 = 100.0,
     /// Rotation speed in radians per second
-    rotate_speed: f32 = 1.0,
+    rotate_speed: f32 = 0.2,
 };
 
 pub fn init(projection: ProjectionTag, w: u32, h: u32, near: f32, far: f32, fov: ?f32) Camera {
