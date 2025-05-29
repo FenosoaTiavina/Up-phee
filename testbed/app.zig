@@ -180,7 +180,12 @@ pub fn draw(ctx: uph.Context.Context) !void {
         var trs = uph.uph_3d.Transform.Transform.init();
         _ = trs
             .translate(@as(f32, @floatFromInt(i)) * 1.5, 0.0, 0.0)
-            .rotate(0, rotation, 0).setScale(.{ 5, 5, 5 });
+            .rotate(
+                if (i < 3) rotation else 0,
+                if (i >= 3 and i < 6) rotation else 0,
+                if (i >= 6 and i < 9) rotation else 0,
+            )
+            .setScale(.{ 5, 5, 5 });
         const col = uph.Types.Vec4_f32{
             if (i < 3) 1 else 0,
             if (i >= 3 and i < 6) 1 else 0,

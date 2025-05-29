@@ -106,6 +106,7 @@ pub fn createApp(
             uph,
             .{ .dep_name = null, .link_dynamic = true },
         );
+
         const install_plugin = b.addInstallArtifact(
             plugin,
             .{
@@ -114,7 +115,7 @@ pub fn createApp(
                 },
             },
         );
-        b.step(b.fmt("plug-{s}", .{pname}), b.fmt("compile plugin: {s}", .{pname})).dependOn(&install_plugin.step);
+        b.step(b.fmt("plug:{s}", .{pname}), b.fmt("build plugin: {s}", .{pname})).dependOn(&install_plugin.step);
         install_plugin.step.dependOn(&exe.step);
     }
 
@@ -227,7 +228,7 @@ fn setupCompileStep(
     name: []const u8,
     install: *std.Build.Step.InstallArtifact,
 ) void {
-    const compile_step = b.step(b.fmt("compile-{s}", .{name}), "Run the application");
+    const compile_step = b.step(b.fmt("compile:{s}", .{name}), b.fmt("Compile {s}", .{name}));
     compile_step.dependOn(&install.step);
 }
 
